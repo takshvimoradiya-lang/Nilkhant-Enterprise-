@@ -1,4 +1,3 @@
-import { supabase } from "./supabase";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
