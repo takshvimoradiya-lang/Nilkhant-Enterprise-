@@ -83,7 +83,7 @@ const SEED_DISPATCHES = [
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap’);
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
 :root{
 –bg:#07090F;–s1:#0C1018;–s2:#101520;
 –b1:rgba(255,255,255,.06);–b2:rgba(255,255,255,.1);
@@ -92,9 +92,9 @@ const CSS = `
 –sbw:242px;–sbc:52px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Outfit’,sans-serif;background:var(–bg);color:var(–tx);line-height:1.5}
+body{font-family:'Outfit',sans-serif;background:var(–bg);color:var(–tx);line-height:1.5}
 ::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
-input,select,textarea,button{font-family:'Outfit’,sans-serif}
+input,select,textarea,button{font-family:'Outfit',sans-serif}
 
 .shell{display:flex;min-height:100vh}
 
@@ -122,9 +122,9 @@ input,select,textarea,button{font-family:'Outfit’,sans-serif}
 .gsd-hd{padding:8px 12px 4px;font-size:9px;font-weight:700;color:var(–mu);text-transform:uppercase;letter-spacing:.8px}
 .gsd-row{padding:9px 12px;cursor:pointer;border-bottom:1px solid var(–b1);transition:background .12s}
 .gsd-row:hover{background:rgba(56,189,248,.06)}.gsd-row:last-child{border-bottom:none}
-.gsd-id{font-family:'JetBrains Mono’,monospace;font-size:10.5px;color:var(–ac);font-weight:600}
+.gsd-id{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(–ac);font-weight:600}
 .gsd-info{font-size:11.5px;color:var(–tx);margin-top:1px}
-.gsd-rfid{font-size:9.5px;color:var(–ac2);margin-top:1px;font-family:'JetBrains Mono’,monospace}
+.gsd-rfid{font-size:9.5px;color:var(–ac2);margin-top:1px;font-family:'JetBrains Mono',monospace}
 .gsd-empty{padding:16px;text-align:center;color:var(–mu);font-size:12px}
 
 /* NAV */
@@ -166,7 +166,7 @@ input,select,textarea,button{font-family:'Outfit’,sans-serif}
 .sg4{grid-template-columns:repeat(4,1fr)}.sg3{grid-template-columns:repeat(3,1fr)}.sg2{grid-template-columns:repeat(2,1fr)}
 .sc{background:var(–s1);border:1px solid var(–b1);border-radius:10px;padding:13px 15px;position:relative;overflow:hidden;transition:border-color .18s}
 .sc:hover{border-color:var(–b2)}
-.sc::after{content:’’;position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
+.sc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
 .sc.bl::after{background:linear-gradient(90deg,var(–ac),transparent)}.sc.gr::after{background:linear-gradient(90deg,var(–gr),transparent)}
 .sc.am::after{background:linear-gradient(90deg,var(–am),transparent)}.sc.rd::after{background:linear-gradient(90deg,var(–rd),transparent)}
 .sc.gy::after{background:linear-gradient(90deg,var(–gy),transparent)}.sc.in::after{background:linear-gradient(90deg,var(–ac2),transparent)}
@@ -232,10 +232,10 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .mac{display:flex;gap:6px;justify-content:flex-end;margin-top:15px;flex-wrap:wrap}
 
 /* MISC */
-.uid{font-family:'JetBrains Mono’,monospace;font-size:10.5px;color:var(–ac);font-weight:600}
-.rtag{font-family:'JetBrains Mono’,monospace;font-size:9.5px;color:var(–ac2);background:rgba(129,140,248,.08);padding:2px 5px;border-radius:4px;border:1px solid rgba(129,140,248,.15);display:inline-block;margin:1px 0}
-.lot{font-family:'JetBrains Mono’,monospace;font-size:9.5px;color:var(–am);background:rgba(251,191,36,.08);padding:2px 5px;border-radius:4px;border:1px solid rgba(251,191,36,.15)}
-.invno{font-family:'JetBrains Mono’,monospace;font-size:10.5px;color:var(–ac2);font-weight:600}
+.uid{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(–ac);font-weight:600}
+.rtag{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(–ac2);background:rgba(129,140,248,.08);padding:2px 5px;border-radius:4px;border:1px solid rgba(129,140,248,.15);display:inline-block;margin:1px 0}
+.lot{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(–am);background:rgba(251,191,36,.08);padding:2px 5px;border-radius:4px;border:1px solid rgba(251,191,36,.15)}
+.invno{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(–ac2);font-weight:600}
 .price{font-weight:700;color:var(–gr)}
 .whlabel{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid rgba(56,189,248,.2);color:var(–ac);background:rgba(56,189,248,.08)}
 .al{border-radius:7px;padding:9px 12px;font-size:11.5px;display:flex;align-items:flex-start;gap:7px;margin-bottom:10px}
@@ -275,7 +275,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 
 /* VERIFY MODULE */
 .scan-input-wrap{background:var(–bg);border:2px dashed rgba(56,189,248,.25);border-radius:10px;padding:20px;margin-bottom:14px;text-align:center}
-.scan-input{background:rgba(56,189,248,.06);border:1.5px solid rgba(56,189,248,.3);border-radius:8px;padding:10px 14px;color:var(–ac);font-size:16px;font-family:'JetBrains Mono’,monospace;font-weight:600;outline:none;text-align:center;width:100%;max-width:320px;letter-spacing:2px;transition:all .15s}
+.scan-input{background:rgba(56,189,248,.06);border:1.5px solid rgba(56,189,248,.3);border-radius:8px;padding:10px 14px;color:var(–ac);font-size:16px;font-family:'JetBrains Mono',monospace;font-weight:600;outline:none;text-align:center;width:100%;max-width:320px;letter-spacing:2px;transition:all .15s}
 .scan-input:focus{border-color:var(–ac);background:rgba(56,189,248,.1);box-shadow:0 0 0 3px rgba(56,189,248,.12)}
 .scan-input::placeholder{color:rgba(56,189,248,.3);font-size:12px;letter-spacing:1px}
 
@@ -326,7 +326,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 
 /* LOGIN */
 .lw{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(–bg);position:relative;overflow:hidden}
-.lw::before{content:’’;position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.04) 0%,transparent 70%);top:-200px;right:-200px}
+.lw::before{content:'';position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.04) 0%,transparent 70%);top:-200px;right:-200px}
 .lcard{background:var(–s1);border:1px solid var(–b2);border-radius:15px;padding:34px;width:370px;position:relative;z-index:1;box-shadow:0 40px 80px rgba(0,0,0,.5)}
 .lbrand{display:flex;align-items:center;gap:9px;margin-bottom:22px}
 .lico{width:38px;height:38px;background:linear-gradient(135deg,var(–ac),var(–ac2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px}
@@ -340,7 +340,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .lerr{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);border-radius:7px;padding:8px 11px;color:#FECACA;font-size:11.5px;margin-bottom:11px}
 .lhint{margin-top:13px;padding:11px;background:rgba(255,255,255,.02);border-radius:7px;border:1px solid var(–b1)}
 .lhint p{font-size:10.5px;color:var(–mu);margin-bottom:2px}
-.lhint code{color:var(–ac);font-family:'JetBrains Mono’,monospace;font-size:10px}
+.lhint code{color:var(–ac);font-family:'JetBrains Mono',monospace;font-size:10px}
 
 /* TOAST */
 .toast{position:fixed;bottom:14px;right:14px;background:var(–s2);border:1px solid var(–b2);border-radius:8px;padding:9px 13px;display:flex;align-items:center;gap:7px;z-index:400;box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:12px;animation:tin .18s ease;max-width:290px}
@@ -1192,7 +1192,7 @@ return <div>
 <div className="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Modules</th><th>Actions</th></tr></thead>
 <tbody>{users.map(u=><tr key={u.id}>
 <td><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,var(–ac),var(–ac2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,flexShrink:0}}>{u.name[0]}</div><span style={{fontWeight:600,fontSize:11.5}}>{u.name}</span></div></td>
-<td style={{fontFamily:"'JetBrains Mono’,monospace",fontSize:10.5,color:"var(–ac)"}}>{u.username}</td>
+<td style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"var(–ac)"}}>{u.username}</td>
 <td><span className="badge" style={{background:u.role==="admin"?"rgba(251,191,36,.12)":"rgba(56,189,248,.12)",color:u.role==="admin"?"var(–am)":"var(–ac)"}}>{u.role}</span></td>
 <td style={{fontSize:10.5,color:"var(–mu2)"}}>{(u.modules||[]).length} modules</td>
 <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>{setUmod({item:u});setUform({…u});}}>Edit</button>{u.role!=="admin"&&<button className="btn br bsm" onClick={()=>{ onUsersChange(users.filter(x=>x.id!==u.id)); showToast("Deleted","warn"); }}>Del</button>}</div></td>
