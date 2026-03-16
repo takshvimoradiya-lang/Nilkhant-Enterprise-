@@ -168,6 +168,7 @@ input,select,textarea,button{font-family:'Outfit',sans-serif}
 .sg{display:grid;gap:10px;margin-bottom:14px}
 .sg4{grid-template-columns:repeat(4,1fr)}.sg3{grid-template-columns:repeat(3,1fr)}.sg2{grid-template-columns:repeat(2,1fr)}
 .sc{background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:13px 15px;position:relative;overflow:hidden;transition:border-color .18s}
+=====PART2=====
 .sc:hover{border-color:var(--b2)}
 .sc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
 .sc.bl::after{background:linear-gradient(90deg,var(--ac),transparent)}.sc.gr::after{background:linear-gradient(90deg,var(--gr),transparent)}
@@ -338,6 +339,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .ll{font-size:9.5px;font-weight:700;color:var(--mu2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px}
 .li{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--b1);border-radius:7px;padding:9px 11px;color:var(--tx);font-size:13px;outline:none;transition:all .18s;margin-bottom:11px}
 .li:focus{border-color:var(--ac);background:rgba(56,189,248,.04)}
+=====PART3=====
 .lbtn{width:100%;background:linear-gradient(135deg,var(--ac),var(--ac2));border:none;border-radius:7px;padding:10px;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;transition:all .18s}
 .lbtn:hover{opacity:.92;transform:translateY(-1px)}
 .lerr{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);border-radius:7px;padding:8px 11px;color:#FECACA;font-size:11.5px;margin-bottom:11px}
@@ -508,6 +510,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches }) {
           </div>
           <span className="price" style={{fontSize:11}}>{fmt(bs.val)}</span>
         </div>
+=====PART4=====
         <div className="brand-table-wrap">
           <table>
             <thead><tr><th>Unit ID</th><th>Tonnage</th><th>RFID Indoor</th><th>RFID Outdoor</th><th>Status</th><th>Sale Price</th><th>Location</th></tr></thead>
@@ -678,6 +681,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete }) {
   const [scannedRfids, setScannedRfids] = useState(new Set()); // set of rfid strings scanned
   const [history, setHistory] = useState([]);
   const [submitted, setSubmitted] = useState(false);
+=====PART5=====
   const [adminNote, setAdminNote] = useState("");
   const [showMissing, setShowMissing] = useState(true);
   const [showVerified, setShowVerified] = useState(true);
@@ -827,7 +831,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete }) {
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
                     <div className={`tag-dot ${s.outScanned?"scanned":"missing"}`}/>
                     <span style={{fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:s.outScanned?"var(--gr)":"var(--mu)"}}>
-                      {u.rfidOut||"No outdoor tag"} {s.outScanned?"✓":""}
+                      {u.rfidOut||"No outdoor tag"} {s.outScanned?"":""}
                     </span>
                   </div>
                 </div>
@@ -848,6 +852,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete }) {
       <div className="chd"><div className="ct" style={{color:"var(--am)"}}>⚠️ Unknown Tags ({unknownScans.length})</div></div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {unknownScans.map(r=><span key={r} className="rtag" style={{color:"var(--am)",borderColor:"rgba(251,191,36,.3)"}}>{r}</span>)}
+=====PART6=====
       </div>
     </div>}
 
@@ -1018,6 +1023,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
       <div className="sc gy"><div className="sl">Sold</div><div className="sv gy">{sold.length}</div></div>
       <div className="sc am"><div className="sl">Revenue</div><div className="sv am" style={{fontSize:14}}>{fmt(sold.reduce((s,u)=>s+(u.salePrice||0),0))}</div></div>
     </div>
+=====PART7=====
     <div className="filt">
       <div className={`chip ${tab==="available"?"on":""}`} onClick={()=>setTab("available")}>✅ Available ({avail.length})</div>
       <div className={`chip ${tab==="sold"?"on":""}`} onClick={()=>setTab("sold")}>💰 Sold ({sold.length})</div>
@@ -1188,6 +1194,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     </div></div>}
   </div>;
 }
+=====PART8=====
 
 function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, showToast }) {
   const [sf,setSf]=useState("all"); const [search,setSearch]=useState(""); const [det,setDet]=useState(null); const [sm,setSm]=useState(null);
@@ -1358,6 +1365,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
           <button className="btn bgh" onClick={()=>{setInvForm({companyName:"CoolStock AC Supplies",tagline:"Premium AC Sales · Your City",gstLine:"GST: YOUR-GST-NUMBER",footer:"Thank you for your business!",showGst:true,waTemplate:DEFAULT_TEMPLATE});showToast("Reset to default","warn");}}>Reset Default</button>
         </div>
       </div>
+=====PART9=====
     </div>}
 
     {modal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setModal(null)}><div className="mo">
@@ -1389,7 +1397,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
 
 // ─── ROOT APP (v7: persist login, add unit fix, split payment) ────────────────
 export default function App() {
-const getSharedState = () => {
+  const getSharedState = () => {
     try {
       const raw = localStorage.getItem(SHARED_STATE_KEY);
       return raw ? JSON.parse(raw) : null;
@@ -1438,9 +1446,10 @@ const getSharedState = () => {
   );
   const [page,       setPage]       = useState("dashboard");
   const [toast,      setToast]      = useState(null);
+  // Keep single source of truth for live verification + invoice sequence state.
   const [verifs,     setVerifs]     = useState(initialShared?.verifs || []);
   const [rfidUnit,   setRfidUnit]   = useState(null);
-  const [verifs,     setVerifs]     = useState(initialShared?.verifs || []);
+  const [invCtr,     setInvCtr]     = useState(initialShared?.invCtr ?? 1);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
 
   const showToast=(msg,type="success")=>setToast({message:msg,type});
@@ -1487,7 +1496,7 @@ const getSharedState = () => {
 
   // Keep logged-in user fresh if users list changes
   useEffect(()=>{ if(user){ const f=users.find(u=>u.id===user.id); if(f&&f.password!==undefined){ setUser(prev=>{ const updated={...prev,...f}; try{localStorage.setItem("cs_user",JSON.stringify(updated));}catch{} return updated; }); } } },[users]);
- 
+
   // Persist/share business data in localStorage
   useEffect(() => {
     const updatedAt = Date.now();
@@ -1527,6 +1536,7 @@ const getSharedState = () => {
       if (hasOwn(state, "warehouses")) setWarehouses(state.warehouses || []);
       if (hasOwn(state, "customers")) setCustomers(state.customers || []);
       if (hasOwn(state, "dispatches")) setDispatches(state.dispatches || []);
+=====PART10=====
       if (hasOwn(state, "invoiceTemplate")) setInvoiceTemplate(state.invoiceTemplate);
       if (hasOwn(state, "verifs")) setVerifs(state.verifs || []);
       if (hasOwn(state, "invCtr") && state.invCtr != null) setInvCtr(state.invCtr);
@@ -1560,7 +1570,7 @@ const getSharedState = () => {
       supabase.removeChannel(channel);
     };
   }, []);
-  
+
   const userMods=user?.modules||[];
   useEffect(()=>{ if(user&&!userMods.includes(page))setPage(userMods[0]||"dashboard"); },[userMods]);
 
