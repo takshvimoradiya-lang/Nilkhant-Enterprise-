@@ -921,7 +921,31 @@ function QCModule({ units, warehouses, onUpdate, user }) {
   </div>;
 }
 
-// ─── SALES ────────────────────────────────────────────────────────────────────
+// ─── DEFAULT WA TEMPLATE ──────────────────────────────────────────────────────
+const DEFAULT_TEMPLATE = `🧾 Invoice: {invoice}
+❄️ {company}
+
+Dear {customer},
+
+Your AC unit purchase details:
+• Product: {product}
+• Unit ID: {unitId}
+• Lot: {lot}
+• Sale Date: {date}
+
+💰 Payment Details:
+• Total Amount: {total}
+• Booking Paid: {booking}
+• Balance on Delivery: {remaining}
+
+📍 Delivery Address: {address}
+
+🚚 Delivery Partner: {partner}
+📦 Tracking: {tracking}
+
+Thank you for your purchase! 🙏
+For any queries please call us.`;
+
 // ─── SALES (v7: split payment, WA confirm, dynamic invoice) ──────────────────
 function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustomer, onAddDispatch, user, showToast, invCtr, setInvCtr, invoiceTemplate }) {
   const [tab,setTab]=useState("available"); const [search,setSearch]=useState("");
@@ -1252,83 +1276,6 @@ function Customers({ customers, units, dispatches }) {
 }
 
 // ─── MASTER PAGE ──────────────────────────────────────────────────────────────
-function MasterPage({ lots,brands,tonnages,warehouses,users,onLotsChange,onBrandsChange,onTonnagesChange,onWHChange,onUsersChange,showToast }) {
-  const [tab,setTab]=useState("wh"); const [modal,setModal]=useState(null); const [form,setForm]=useState({}); const f=v=>setForm(p=>({...p,...v}));
-  const [umod,setUmod]=useState(null); const [uform,setUform]=useState({}); const uf=v=>setUform(p=>({...p,...v}));
-  const sets={ lots:{data:lots,set:onLotsChange,key:"number",label:"Lot Number"}, brands:{data:brands,set:onBrandsChange,key:"name",label:"Brand Name"}, tonnages:{data:tonnages,set:onTonnagesChange,key:"value",label:"Tonnage"}, wh:{data:warehouses,set:onWHChange,key:"name",label:"Warehouse Name"} };
-  const openAdd=t=>{setModal({t,item:null});setForm({createdDate:today()});}; const openEdit=(t,item)=>{setModal({t,item});setForm({...item});};
-  const save=()=>{ const{t,item}=modal; const s=sets[t]; if(!form[s.key])return; const id=genId(); item?s.set(s.data.map(x=>x.id===item.id?{...x,...form}:x)):s.set([...s.data,{...form,id}]); setModal(null);showToast("Saved ✅"); };
-  const del=(t,id)=>{ const s=sets[t]; s.set(s.data.filter(x=>x.id!==id)); showToast("Deleted","warn"); };
-  const saveUser=()=>{ if(!uform.name||!uform.username||!uform.password)return; const item=umod.item; item?onUsersChange(users.map(u=>u.id===item.id?{...u,...uform}:u)):onUsersChange([...users,{...uform,id:genId()}]); setUmod(null);showToast("User saved ✅"); };
-  const togMod=mid=>{ const m=uform.modules||[]; setUform(p=>({...p,modules:m.includes(mid)?m.filter(x=>x!==mid):[...m,mid]})); };
-  const TABS=[{id:"wh",l:"🏭 Warehouses"},{id:"lots",l:"📦 Lots"},{id:"brands",l:"🏷️ Brands"},{id:"tonnages",l:"📐 Tonnage"},{id:"users",l:"👤 Users"},{id:"perms",l:"🔐 Perms"}];
-
-  const MasterSection = ({ type }) => {
-    const s=sets[type]; const extraCols=type==="wh"?["location"]:[];
-    return <div className="card"><div className="chd"><div><div className="ct">{tab==="wh"?"🏭 Warehouse Master":tab==="lots"?"📦 Lot Master":tab==="brands"?"🏷️ Brand Master":"📐 Tonnage Master"}</div><div className="cs">Only items here appear in Stock Intake dropdowns</div></div><button className="btn bp" onClick={()=>openAdd(type)}>+ Add</button></div>
-      {s.data.length===0?<div className="empty"><div className="et">No records yet</div></div>:(
-        <div className="tw"><table><thead><tr><th>{s.label}</th>{extraCols.map(c=><th key={c}>{c}</th>)}<th>Created Date</th><th>Remark</th><th>Actions</th></tr></thead>
-          <tbody>{s.data.map(item=><tr key={item.id}>
-            <td style={{fontWeight:600}}>{item[s.key]}</td>
-            {extraCols.map(c=><td key={c} style={{fontSize:11,color:"var(--mu2)"}}>{item[c]||"—"}</td>)}
-            <td style={{fontSize:10.5}}>{item.createdDate}</td>
-            <td style={{fontSize:11,color:"var(--mu2)"}}>{item.remark||"—"}</td>
-            <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>openEdit(type,item)}>Edit</button><button className="btn br bsm" onClick={()=>del(type,item.id)}>Del</button></div></td>
-          </tr>)}</tbody>
-        </table></div>
-      )}
-    </div>;
-  };
-
-  return <div>
-    <div className="ph"><div><div className="pt">⚙️ Master & Admin</div><div className="ps">Admin only</div></div></div>
-    <div className="mtabs">{TABS.map(t=><button key={t.id} className={`mtab ${tab===t.id?"on":""}`} onClick={()=>setTab(t.id)}>{t.l}</button>)}</div>
-    {(tab==="wh"||tab==="lots"||tab==="brands"||tab==="tonnages")&&<MasterSection type={tab}/>}
-    {tab==="users"&&<div className="card"><div className="chd"><div><div className="ct">👤 Users ({users.length})</div></div><button className="btn bp" onClick={()=>{setUmod({item:null});setUform({name:"",username:"",password:"",role:"technician",modules:["dashboard"],createdDate:today()});}}>+ Add</button></div>
-      <div className="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Modules</th><th>Actions</th></tr></thead>
-        <tbody>{users.map(u=><tr key={u.id}>
-          <td><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,var(--ac),var(--ac2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,flexShrink:0}}>{u.name[0]}</div><span style={{fontWeight:600,fontSize:11.5}}>{u.name}</span></div></td>
-          <td style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"var(--ac)"}}>{u.username}</td>
-          <td><span className="badge" style={{background:u.role==="admin"?"rgba(251,191,36,.12)":"rgba(56,189,248,.12)",color:u.role==="admin"?"var(--am)":"var(--ac)"}}>{u.role}</span></td>
-          <td style={{fontSize:10.5,color:"var(--mu2)"}}>{(u.modules||[]).length} modules</td>
-          <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>{setUmod({item:u});setUform({...u});}}>Edit</button>{u.role!=="admin"&&<button className="btn br bsm" onClick={()=>{ onUsersChange(users.filter(x=>x.id!==u.id)); showToast("Deleted","warn"); }}>Del</button>}</div></td>
-        </tr>)}</tbody>
-      </table></div>
-    </div>}
-    {tab==="perms"&&<div className="card"><div className="chd"><div className="ct">🔐 Permission Matrix</div></div>
-      <div className="tw"><table><thead><tr><th>User</th>{ALL_MODULES.map(m=><th key={m.id} style={{textAlign:"center"}}>{m.icon}<br/><span style={{fontSize:8}}>{m.label.split(" ")[0]}</span></th>)}</tr></thead>
-        <tbody>{users.map(u=><tr key={u.id}><td><b style={{fontSize:11.5}}>{u.name}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.role}</span></td>{ALL_MODULES.map(m=><td key={m.id} style={{textAlign:"center"}}>{(u.modules||[]).includes(m.id)?<span style={{color:"var(--gr)"}}>✅</span>:<span style={{color:"#1E293B"}}>✗</span>}</td>)}</tr>)}</tbody>
-      </table></div>
-    </div>}
-
-    {modal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setModal(null)}><div className="mo">
-      <div className="mti">{modal.item?"Edit":"Add"} {sets[modal.t].label}</div>
-      <div className="fg2">
-        <div className="fi"><label className="fl">{sets[modal.t].label} *</label><input className="fn" value={form[sets[modal.t].key]||""} onChange={e=>f({[sets[modal.t].key]:e.target.value})} placeholder={modal.t==="wh"?"e.g. Warehouse 3":modal.t==="lots"?"LOT-2024-XXX":modal.t==="brands"?"e.g. Carrier":"e.g. 3.5 Ton"}/></div>
-        <div className="fi"><label className="fl">Created Date</label><input type="date" className="fn" value={form.createdDate||""} onChange={e=>f({createdDate:e.target.value})}/></div>
-        {modal.t==="wh"&&<div className="fi full"><label className="fl">Location / Address</label><input className="fn" value={form.location||""} onChange={e=>f({location:e.target.value})} placeholder="e.g. MIDC, Thane"/></div>}
-        <div className="fi full"><label className="fl">Remark</label><input className="fn" value={form.remark||""} onChange={e=>f({remark:e.target.value})} placeholder="Optional..."/></div>
-      </div>
-      <div className="mac"><button className="btn bgh" onClick={()=>setModal(null)}>Cancel</button><button className="btn bp" onClick={save}>Save →</button></div>
-    </div></div>}
-
-    {umod&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setUmod(null)}><div className="mo">
-      <div className="mti">{umod.item?"Edit":"Add"} User</div><div className="msu">Set credentials and assign module access</div>
-      <div className="fg2">
-        <div className="fi"><label className="fl">Full Name *</label><input className="fn" value={uform.name||""} onChange={e=>uf({name:e.target.value})}/></div>
-        <div className="fi"><label className="fl">Username *</label><input className="fn" value={uform.username||""} onChange={e=>uf({username:e.target.value})}/></div>
-        <div className="fi"><label className="fl">Password *</label><input type="password" className="fn" value={uform.password||""} onChange={e=>uf({password:e.target.value})}/></div>
-        <div className="fi"><label className="fl">Role</label><select className="fs" value={uform.role||"technician"} onChange={e=>uf({role:e.target.value})}><option value="technician">Technician</option><option value="sales">Sales</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
-      </div>
-      <div style={{marginTop:11}}><div className="fl" style={{marginBottom:8}}>MODULE ACCESS</div>
-        <div className="mod-grid">{ALL_MODULES.map(m=>{ const chk=(uform.modules||[]).includes(m.id); return <div key={m.id} className={`mod-item ${chk?"chk":""}`} onClick={()=>togMod(m.id)}><div className="mod-chk">{chk&&<span style={{fontSize:8,color:"#fff",fontWeight:900}}>✓</span>}</div><span style={{fontSize:11}}>{m.icon} {m.label}</span></div>; })}</div>
-      </div>
-      <div className="mac"><button className="btn bgh" onClick={()=>setUmod(null)}>Cancel</button><button className="btn bp" onClick={saveUser}>Save User →</button></div>
-    </div></div>}
-  </div>;
-}
-
-
 // ─── MASTER PAGE (v7: added Invoice Template tab) ────────────────────────────
 function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLotsChange,onBrandsChange,onTonnagesChange,onWHChange,onUsersChange,onInvoiceTemplateChange,showToast }) {
   const [tab,setTab]=useState("wh"); const [modal,setModal]=useState(null); const [form,setForm]=useState({}); const f=v=>setForm(p=>({...p,...v}));
@@ -1437,31 +1384,6 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
     </div></div>}
   </div>;
 }
-
-// ─── DEFAULT WA TEMPLATE ──────────────────────────────────────────────────────
-const DEFAULT_TEMPLATE = `🧾 Invoice: {invoice}
-❄️ {company}
-
-Dear {customer},
-
-Your AC unit purchase details:
-• Product: {product}
-• Unit ID: {unitId}
-• Lot: {lot}
-• Sale Date: {date}
-
-💰 Payment Details:
-• Total Amount: {total}
-• Booking Paid: {booking}
-• Balance on Delivery: {remaining}
-
-📍 Delivery Address: {address}
-
-🚚 Delivery Partner: {partner}
-📦 Tracking: {tracking}
-
-Thank you for your purchase! 🙏
-For any queries please call us.`;
 
 // ─── ROOT APP (v7: persist login, add unit fix, split payment) ────────────────
 export default function App() {
