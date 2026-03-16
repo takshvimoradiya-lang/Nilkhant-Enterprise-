@@ -30,6 +30,8 @@ const DISPATCH_STAGES = [
 const today  = () => new Date().toISOString().split("T")[0];
 const fmt    = n => (n!=null&&n!=="")?"₹"+Number(n).toLocaleString("en-IN"):"—";
 const genId  = () => Math.random().toString(36).slice(2,9);
+const SHARED_STATE_KEY = "cs_shared_state_v1";
+const LIVE_CHANNEL = "coolstock-live";
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
 const SEED_WH = [
@@ -1387,26 +1389,58 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
 
 // ─── ROOT APP (v7: persist login, add unit fix, split payment) ────────────────
 export default function App() {
+const getSharedState = () => {
+    try {
+      const raw = localStorage.getItem(SHARED_STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const initialShared = getSharedState();
+  const syncChannelRef = useRef(null);
+  const skipNextBroadcastRef = useRef(false);
+  const clientIdRef = useRef(`${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+  const latestStateRef = useRef(initialShared || {
+    users: SEED_USERS,
+    units: SEED_UNITS,
+    lots: SEED_LOTS,
+    brands: SEED_BRANDS,
+    tonnages: SEED_TONNAGES,
+    warehouses: SEED_WH,
+    customers: SEED_CUSTOMERS,
+    dispatches: SEED_DISPATCHES,
+    invoiceTemplate: null,
+    verifs: [],
+    invCtr: 1,
+    updatedAt: 0
+  });
+  const lastAppliedAtRef = useRef(initialShared?.updatedAt || 0);
+
   const getSb = () => { try{ return localStorage.getItem("cs_sb")!=="0"; }catch{ return true; } };
   const [sbOpen,setSbOpen] = useState(getSb);
   const toggleSb = () => setSbOpen(p=>{ try{localStorage.setItem("cs_sb",p?"0":"1");}catch{} return !p; });
 
   // ── PERSIST LOGIN via localStorage ────────────────────────────────────────
-  const [users,      setUsers]      = useState(SEED_USERS);
+  const [users,      setUsers]      = useState(initialShared?.users || SEED_USERS);
   const [user,       setUser]       = useState(()=>{ try{ const s=localStorage.getItem("cs_user"); return s?JSON.parse(s):null; }catch{ return null; } });
-  const [units,      setUnits]      = useState(SEED_UNITS);
-  const [lots,       setLots]       = useState(SEED_LOTS);
-  const [brands,     setBrands]     = useState(SEED_BRANDS);
-  const [tonnages,   setTonnages]   = useState(SEED_TONNAGES);
-  const [warehouses, setWarehouses] = useState(SEED_WH);
-  const [customers,  setCustomers]  = useState(SEED_CUSTOMERS);
-  const [dispatches, setDispatches] = useState(SEED_DISPATCHES);
-  const [invoiceTemplate, setInvoiceTemplate] = useState(()=>{ try{ const s=localStorage.getItem("cs_inv_tpl"); return s?JSON.parse(s):null; }catch{ return null; } });
+  const [units,      setUnits]      = useState(initialShared?.units || SEED_UNITS);
+  const [lots,       setLots]       = useState(initialShared?.lots || SEED_LOTS);
+  const [brands,     setBrands]     = useState(initialShared?.brands || SEED_BRANDS);
+  const [tonnages,   setTonnages]   = useState(initialShared?.tonnages || SEED_TONNAGES);
+  const [warehouses, setWarehouses] = useState(initialShared?.warehouses || SEED_WH);
+  const [customers,  setCustomers]  = useState(initialShared?.customers || SEED_CUSTOMERS);
+  const [dispatches, setDispatches] = useState(initialShared?.dispatches || SEED_DISPATCHES);
+  const [invoiceTemplate, setInvoiceTemplate] = useState(
+    Object.prototype.hasOwnProperty.call(initialShared || {}, "invoiceTemplate")
+      ? initialShared.invoiceTemplate
+      : (()=>{ try{ const s=localStorage.getItem("cs_inv_tpl"); return s?JSON.parse(s):null; }catch{ return null; } })()
+  );
   const [page,       setPage]       = useState("dashboard");
   const [toast,      setToast]      = useState(null);
-  const [verifs,     setVerifs]     = useState([]);
+  const [verifs,     setVerifs]     = useState(initialShared?.verifs || []);
   const [rfidUnit,   setRfidUnit]   = useState(null);
-  const [invCtr,     setInvCtr]     = useState(1);
+  const [verifs,     setVerifs]     = useState(initialShared?.verifs || []);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
 
   const showToast=(msg,type="success")=>setToast({message:msg,type});
@@ -1453,6 +1487,80 @@ export default function App() {
 
   // Keep logged-in user fresh if users list changes
   useEffect(()=>{ if(user){ const f=users.find(u=>u.id===user.id); if(f&&f.password!==undefined){ setUser(prev=>{ const updated={...prev,...f}; try{localStorage.setItem("cs_user",JSON.stringify(updated));}catch{} return updated; }); } } },[users]);
+ 
+  // Persist/share business data in localStorage
+  useEffect(() => {
+    const updatedAt = Date.now();
+    const sharedState = { users, units, lots, brands, tonnages, warehouses, customers, dispatches, invoiceTemplate, verifs, invCtr, updatedAt };
+    latestStateRef.current = sharedState;
+    lastAppliedAtRef.current = updatedAt;
+    try { localStorage.setItem(SHARED_STATE_KEY, JSON.stringify(sharedState)); } catch {}
+
+    if (skipNextBroadcastRef.current) {
+      skipNextBroadcastRef.current = false;
+      return;
+    }
+
+    syncChannelRef.current?.send({
+      type: "broadcast",
+      event: "state-sync",
+      payload: { clientId: clientIdRef.current, state: sharedState }
+    });
+  }, [users, units, lots, brands, tonnages, warehouses, customers, dispatches, invoiceTemplate, verifs, invCtr]);
+
+  // Realtime sync across logged-in phones
+  useEffect(() => {
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
+    const applyRemoteState = state => {
+      if (!state) return;
+      if ((state.updatedAt || 0) < (lastAppliedAtRef.current || 0)) return;
+
+      skipNextBroadcastRef.current = true;
+      lastAppliedAtRef.current = state.updatedAt || Date.now();
+      latestStateRef.current = state;
+
+      if (hasOwn(state, "users")) setUsers(state.users || []);
+      if (hasOwn(state, "units")) setUnits(state.units || []);
+      if (hasOwn(state, "lots")) setLots(state.lots || []);
+      if (hasOwn(state, "brands")) setBrands(state.brands || []);
+      if (hasOwn(state, "tonnages")) setTonnages(state.tonnages || []);
+      if (hasOwn(state, "warehouses")) setWarehouses(state.warehouses || []);
+      if (hasOwn(state, "customers")) setCustomers(state.customers || []);
+      if (hasOwn(state, "dispatches")) setDispatches(state.dispatches || []);
+      if (hasOwn(state, "invoiceTemplate")) setInvoiceTemplate(state.invoiceTemplate);
+      if (hasOwn(state, "verifs")) setVerifs(state.verifs || []);
+      if (hasOwn(state, "invCtr") && state.invCtr != null) setInvCtr(state.invCtr);
+      showToast("Live update received 🔄", "success");
+    };
+
+    const channel = supabase
+      .channel(LIVE_CHANNEL, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "state-sync" }, ({ payload }) => {
+        if (!payload || payload.clientId === clientIdRef.current) return;
+        applyRemoteState(payload.state);
+      })
+      .on("broadcast", { event: "state-request" }, ({ payload }) => {
+        if (!payload || payload.clientId === clientIdRef.current) return;
+        channel.send({
+          type: "broadcast",
+          event: "state-sync",
+          payload: { clientId: clientIdRef.current, state: latestStateRef.current }
+        });
+      });
+
+    channel.subscribe(status => {
+      if (status === "SUBSCRIBED") {
+        channel.send({ type: "broadcast", event: "state-request", payload: { clientId: clientIdRef.current } });
+      }
+    });
+
+    syncChannelRef.current = channel;
+    return () => {
+      syncChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+  
   const userMods=user?.modules||[];
   useEffect(()=>{ if(user&&!userMods.includes(page))setPage(userMods[0]||"dashboard"); },[userMods]);
 
