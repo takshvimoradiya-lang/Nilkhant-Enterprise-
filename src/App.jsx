@@ -1404,7 +1404,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
           <div style={{fontSize:10.5,color:"var(--mu2)",marginBottom:6}}>Available placeholders: <code style={{fontFamily:"monospace",color:"var(--ac2)"}}>&#123;company&#125; &#123;invoice&#125; &#123;customer&#125; &#123;product&#125; &#123;unitId&#125; &#123;lot&#125; &#123;total&#125; &#123;booking&#125; &#123;remaining&#125; &#123;address&#125; &#123;date&#125; &#123;partner&#125; &#123;tracking&#125;</code></div>
           <textarea className="fn" style={{minHeight:200,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}} value={invForm.waTemplate||DEFAULT_TEMPLATE} onChange={e=>setInvForm(p=>({...p,waTemplate:e.target.value}))}/>
         </div>
-        <div style={{display:"flex",gap:8"}}>
+        <div style={{display:"flex",gap:8}}>
           <button className="btn bp" onClick={()=>{onInvoiceTemplateChange(invForm);showToast("Invoice template saved ✅");}}>Save Template →</button>
           <button className="btn bgh" onClick={()=>{setInvForm({companyName:"CoolStock AC Supplies",tagline:"Premium AC Sales · Your City",gstLine:"GST: YOUR-GST-NUMBER",footer:"Thank you for your business!",showGst:true,waTemplate:DEFAULT_TEMPLATE});showToast("Reset to default","warn");}}>Reset Default</button>
         </div>
