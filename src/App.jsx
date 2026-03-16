@@ -922,11 +922,13 @@ function QCModule({ units, warehouses, onUpdate, user }) {
 }
 
 // ─── SALES ────────────────────────────────────────────────────────────────────
-function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustomer, onAddDispatch, user, showToast, invCtr, setInvCtr }) {
+// ─── SALES (v7: split payment, WA confirm, dynamic invoice) ──────────────────
+function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustomer, onAddDispatch, user, showToast, invCtr, setInvCtr, invoiceTemplate }) {
   const [tab,setTab]=useState("available"); const [search,setSearch]=useState("");
   const [sellModal,setSellModal]=useState(null); const [invModal,setInvModal]=useState(null);
   const [dispModal,setDispModal]=useState(null); const [payModal,setPayModal]=useState(null);
-  const [sf,setSf]=useState({name:"",phone:"",altPhone:"",email:"",address:"",city:"",pincode:"",gst:"",soldDate:today()});
+  const [waConfirm,setWaConfirm]=useState(null); // {unit,customer,dispatch}
+  const [sf,setSf]=useState({name:"",phone:"",altPhone:"",email:"",address:"",city:"",pincode:"",gst:"",soldDate:today(),bookingAmt:"",totalAmt:""});
   const [df,setDf]=useState({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
 
   const avail=units.filter(u=>u.status==="available");
@@ -938,16 +940,49 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     if(!sf.name||!sf.phone)return;
     const n=invCtr+1; const invNo=`INV-${String(n).padStart(4,"0")}`;
     setInvCtr(n);
-    onUpdate(sellModal.id,{status:"sold",soldTo:sf.name,soldDate:sf.soldDate,customerPhone:sf.phone,soldBy:user.name,invoiceNo:invNo,paymentReceived:false});
+    const bookAmt=Number(sf.bookingAmt)||0;
+    const totalAmt=Number(sf.totalAmt)||sellModal.salePrice||0;
+    const remaining=totalAmt-bookAmt;
+    onUpdate(sellModal.id,{status:"sold",soldTo:sf.name,soldDate:sf.soldDate,customerPhone:sf.phone,soldBy:user.name,invoiceNo:invNo,paymentReceived:bookAmt>=totalAmt,bookingAmount:bookAmt,totalAmount:totalAmt,remainingAmount:remaining});
     const ex=customers.find(c=>c.phone===sf.phone);
     if(ex) onAddCustomer({...ex,unitIds:[...(ex.unitIds||[]),sellModal.id]},true);
     else onAddCustomer({id:genId(),...sf,createdDate:today(),unitIds:[sellModal.id]},false);
-    showToast(`Sale recorded · Invoice ${invNo} ✅`); setSellModal(null);
+    showToast(`Sale recorded · Invoice ${invNo} · Booking ₹${bookAmt.toLocaleString("en-IN")} collected ✅`);
+    setSellModal(null);
   };
 
   const openInvoice=u=>{ const c=customers.find(c=>c.unitIds?.includes(u.id)); const d=dispatches.find(d=>d.unitId===u.id); setInvModal({unit:u,customer:c,dispatch:d}); };
+
   const doDispatch=()=>{ const c=customers.find(c=>c.unitIds?.includes(dispModal.id)); onAddDispatch({id:genId(),unitId:dispModal.id,customerId:c?.id||"",invoiceNo:dispModal.invoiceNo,stage:"booked",...df}); showToast("Dispatch created 🚚"); setDispModal(null); };
-  const markPay=u=>{ onUpdate(u.id,{paymentReceived:true}); showToast(`Payment received for ${u.id} 💰`); setPayModal(null); };
+
+  const markBookingPay=u=>{ onUpdate(u.id,{paymentReceived:false,bookingCollected:true}); showToast(`Booking payment confirmed for ${u.id} 💰`); setPayModal(null); };
+  const markFullPay=u=>{ onUpdate(u.id,{paymentReceived:true,remainingAmount:0}); showToast(`Full payment received for ${u.id} 💰`); setPayModal(null); };
+
+  // WhatsApp message builder using template from master
+  const buildWaMsg=(unit,customer,dispatch)=>{
+    const tpl=invoiceTemplate||DEFAULT_TEMPLATE;
+    const rem=unit.remainingAmount||0;
+    const booked=unit.bookingAmount||0;
+    const total=unit.totalAmount||unit.salePrice||0;
+    return tpl
+      .replace(/\{company\}/g, invoiceTemplate?invoiceTemplate.split('\n')[0]?.replace('Company: ',''):"CoolStock AC Supplies")
+      .replace(/\{invoice\}/g, unit.invoiceNo||"—")
+      .replace(/\{customer\}/g, customer?.name||"Customer")
+      .replace(/\{product\}/g, `${unit.brand} ${unit.tonnage} ${unit.model||""}`.trim())
+      .replace(/\{unitId\}/g, unit.id)
+      .replace(/\{lot\}/g, unit.lot||"—")
+      .replace(/\{total\}/g, fmt(total))
+      .replace(/\{booking\}/g, fmt(booked))
+      .replace(/\{remaining\}/g, fmt(rem))
+      .replace(/\{address\}/g, `${customer?.address||""} ${customer?.city||""} ${customer?.pincode||""}`.trim())
+      .replace(/\{date\}/g, unit.soldDate||today())
+      .replace(/\{partner\}/g, dispatch?.deliveryPartner||"—")
+      .replace(/\{tracking\}/g, dispatch?.trackingNo||"—");
+  };
+
+  const openWaConfirm=(unit)=>{ const c=customers.find(c=>c.unitIds?.includes(unit.id)); const d=dispatches.find(d=>d.unitId===unit.id); setWaConfirm({unit,customer:c,dispatch:d,msg:buildWaMsg(unit,c,d)}); };
+
+  const sendWa=()=>{ const p=(waConfirm.customer?.phone||"").replace(/\D/g,""); window.open(`https://wa.me/91${p}?text=${encodeURIComponent(waConfirm.msg)}`,"_blank"); setWaConfirm(null); };
 
   return <div>
     <div className="ph"><div><div className="pt">💰 Sales</div><div className="ps">Manage sales, invoices and dispatch</div></div></div>
@@ -966,7 +1001,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
       {rows.length===0?<div className="empty"><div className="ei">📭</div><div className="et">No units found</div></div>:(
         <div className="tw"><table>
           <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th><th>Price</th>
-            {tab==="sold"?<><th>Invoice</th><th>Customer</th><th>Payment</th><th>Actions</th></>:<th>Action</th>}
+            {tab==="sold"?<><th>Invoice</th><th>Customer</th><th>Booking</th><th>Remaining</th><th>Actions</th></>:<th>Action</th>}
           </tr></thead>
           <tbody>{rows.map(u=>{ const d=dispatches.find(x=>x.unitId===u.id); return <tr key={u.id}>
             <td><span className="uid">{u.id}</span></td>
@@ -977,21 +1012,26 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
             {tab==="sold"?<>
               <td><span className="invno">{u.invoiceNo||"—"}</span></td>
               <td><b style={{fontSize:11.5}}>{u.soldTo}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.customerPhone}</span></td>
-              <td>{u.paymentReceived?<span style={{color:"var(--gr)",fontSize:10.5}}>✅ Received</span>:<span style={{color:"var(--am)",fontSize:10.5}}>⏳ Pending</span>}</td>
+              <td><span style={{color:"var(--gr)",fontWeight:700}}>{fmt(u.bookingAmount||0)}</span>{!u.bookingCollected&&<div style={{fontSize:9,color:"var(--am)"}}>⏳ Pending</div>}{u.bookingCollected&&<div style={{fontSize:9,color:"var(--gr)"}}>✅ Collected</div>}</td>
+              <td>{(u.remainingAmount||0)>0?<span style={{color:"var(--am)",fontWeight:700}}>{fmt(u.remainingAmount)}</span>:<span style={{color:"var(--gr)",fontSize:10.5}}>✅ Paid</span>}</td>
               <td><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                 <button className="btn bb bsm" onClick={()=>openInvoice(u)}>🧾</button>
+                <button className="btn bwa bsm" onClick={()=>openWaConfirm(u)}>💬</button>
                 {!d&&<button className="btn bpu bsm" onClick={()=>setDispModal(u)}>🚚</button>}
                 {d&&<StageBadge stage={d.stage}/>}
                 {!u.paymentReceived&&<button className="btn bg2 bsm" onClick={()=>setPayModal(u)}>💰</button>}
               </div></td>
-            </>:<td>{user.role==="admin"&&<button className="btn bp bsm" onClick={()=>setSellModal(u)}>Sell →</button>}</td>}
+            </>:<td>{user.role==="admin"&&<button className="btn bp bsm" onClick={()=>{setSf({name:"",phone:"",altPhone:"",email:"",address:"",city:"",pincode:"",gst:"",soldDate:today(),bookingAmt:"",totalAmt:String(u.salePrice||"")});setSellModal(u);}}>Sell →</button>}</td>}
           </tr>; })}</tbody>
         </table></div>
       )}
     </div>
 
+    {/* SELL MODAL with split payment */}
     {sellModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setSellModal(null)}><div className="mo lg">
-      <div className="mti">💰 Record Sale</div><div className="msu"><span className="uid">{sellModal.id}</span> · {sellModal.brand} {sellModal.tonnage} · <span className="price">{fmt(sellModal.salePrice)}</span></div>
+      <div className="mti">💰 Record Sale</div>
+      <div className="msu"><span className="uid">{sellModal.id}</span> · {sellModal.brand} {sellModal.tonnage} · <span className="price">{fmt(sellModal.salePrice)}</span></div>
+      <div style={{fontSize:10,color:"var(--ac2)",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:".7px"}}>Customer Information</div>
       <div className="fg2">
         <div className="fi"><label className="fl">Customer Name *</label><input className="fn" value={sf.name} onChange={e=>setSf(p=>({...p,name:e.target.value}))} placeholder="Full name"/></div>
         <div className="fi"><label className="fl">Phone *</label><input className="fn" value={sf.phone} onChange={e=>setSf(p=>({...p,phone:e.target.value}))}/></div>
@@ -1003,9 +1043,25 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
         <div className="fi"><label className="fl">City</label><input className="fn" value={sf.city} onChange={e=>setSf(p=>({...p,city:e.target.value}))}/></div>
         <div className="fi"><label className="fl">Pincode</label><input className="fn" value={sf.pincode} onChange={e=>setSf(p=>({...p,pincode:e.target.value}))}/></div>
       </div>
+      <div style={{height:1,background:"var(--b1)",margin:"14px 0"}}/>
+      <div style={{fontSize:10,color:"var(--am)",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:".7px"}}>💰 Payment Split</div>
+      <div className="fg2">
+        <div className="fi">
+          <label className="fl">Total Sale Amount ₹ *</label>
+          <input type="number" className="fn" value={sf.totalAmt} onChange={e=>setSf(p=>({...p,totalAmt:e.target.value}))} placeholder={String(sellModal.salePrice||"")}/>
+        </div>
+        <div className="fi">
+          <label className="fl">Booking Amount ₹ (collected now)</label>
+          <input type="number" className="fn" value={sf.bookingAmt} onChange={e=>setSf(p=>({...p,bookingAmt:e.target.value}))} placeholder="e.g. 5000"/>
+        </div>
+      </div>
+      {(sf.bookingAmt&&sf.totalAmt)&&<div className="al al-b" style={{marginTop:8}}>
+        💰 <div>Collecting <strong>{fmt(Number(sf.bookingAmt))}</strong> now · Remaining <strong style={{color:"var(--am)"}}>{fmt(Number(sf.totalAmt)-Number(sf.bookingAmt))}</strong> on delivery</div>
+      </div>}
       <div className="mac"><button className="btn bgh" onClick={()=>setSellModal(null)}>Cancel</button><button className="btn bp" onClick={doSell}>Confirm Sale & Invoice →</button></div>
     </div></div>}
 
+    {/* DISPATCH MODAL */}
     {dispModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setDispModal(null)}><div className="mo">
       <div className="mti">🚚 Create Dispatch</div><div className="msu"><span className="uid">{dispModal.id}</span></div>
       <div className="fg2">
@@ -1017,40 +1073,96 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
       <div className="mac"><button className="btn bgh" onClick={()=>setDispModal(null)}>Cancel</button><button className="btn bp" onClick={doDispatch}>Create →</button></div>
     </div></div>}
 
+    {/* PAYMENT MODAL */}
     {payModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setPayModal(null)}><div className="mo">
-      <div className="mti">💰 Confirm Payment</div><div className="msu"><span className="uid">{payModal.id}</span> · <span className="invno">{payModal.invoiceNo}</span> · <span className="price">{fmt(payModal.salePrice)}</span></div>
-      <div className="mac"><button className="btn bgh" onClick={()=>setPayModal(null)}>Cancel</button><button className="btn bg2" onClick={()=>markPay(payModal)}>✅ Confirm Payment Received</button></div>
+      <div className="mti">💰 Confirm Payment</div>
+      <div className="msu"><span className="uid">{payModal.id}</span> · <span className="invno">{payModal.invoiceNo}</span></div>
+      <div className="al al-b">
+        <div>
+          <div>Total: <strong>{fmt(payModal.totalAmount||payModal.salePrice)}</strong></div>
+          <div>Booking collected: <strong style={{color:"var(--gr)"}}>{fmt(payModal.bookingAmount||0)}</strong></div>
+          <div>Remaining: <strong style={{color:"var(--am)"}}>{fmt(payModal.remainingAmount||0)}</strong></div>
+        </div>
+      </div>
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setPayModal(null)}>Cancel</button>
+        {!payModal.bookingCollected&&<button className="btn ba" onClick={()=>markBookingPay(payModal)}>✅ Booking Collected</button>}
+        <button className="btn bg2" onClick={()=>markFullPay(payModal)}>✅ Full Payment Received</button>
+      </div>
     </div></div>}
 
+    {/* WHATSAPP CONFIRMATION MODAL */}
+    {waConfirm&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setWaConfirm(null)}><div className="mo">
+      <div className="mti">💬 Send WhatsApp Message</div>
+      <div className="msu">Preview and edit before sending to {waConfirm.customer?.name} · 📞 {waConfirm.customer?.phone}</div>
+      <div className="fi" style={{marginBottom:14}}>
+        <label className="fl">Message Preview (editable)</label>
+        <textarea className="fn" style={{minHeight:220,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}} value={waConfirm.msg} onChange={e=>setWaConfirm(p=>({...p,msg:e.target.value}))}/>
+      </div>
+      <div className="al al-g">✅ <div>You can edit the message above before sending. Changes here do not affect saved data.</div></div>
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setWaConfirm(null)}>Cancel</button>
+        <button className="btn bwa" onClick={sendWa}>💬 Open WhatsApp →</button>
+      </div>
+    </div></div>}
+
+    {/* INVOICE MODAL */}
     {invModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setInvModal(null)}><div className="mo inv">
-      <div className="inv-sheet">
-        <div className="inv-hd"><div><div className="inv-co">❄️ CoolStock AC Supplies</div><div className="inv-cotag">Premium AC Sales · Your City</div><div style={{fontSize:10,color:"#6B7280",marginTop:3}}>GST: YOUR-GST-NO</div></div><div><div className="inv-no">{invModal.unit?.invoiceNo}</div><div className="inv-dt">{invModal.unit?.soldDate||today()}</div></div></div>
+      <div className="inv-sheet" id="inv-print">
+        <div className="inv-hd">
+          <div>
+            <div className="inv-co">{invoiceTemplate?.companyName||"❄️ CoolStock AC Supplies"}</div>
+            <div className="inv-cotag">{invoiceTemplate?.tagline||"Premium AC Sales · Your City"}</div>
+            <div style={{fontSize:10,color:"#6B7280",marginTop:3}}>{invoiceTemplate?.gstLine||"GST: YOUR-GST-NO"}</div>
+          </div>
+          <div><div className="inv-no">{invModal.unit?.invoiceNo}</div><div className="inv-dt">{invModal.unit?.soldDate||today()}</div></div>
+        </div>
         <div className="inv-parties">
           <div><div className="inv-plbl">Bill To</div><div className="inv-pname">{invModal.customer?.name||"—"}</div>
-            <div className="inv-pdet">{invModal.customer?.phone&&<div>📞 {invModal.customer.phone}</div>}{invModal.customer?.email&&<div>✉️ {invModal.customer.email}</div>}{invModal.customer?.gst&&<div>GST: {invModal.customer.gst}</div>}{invModal.customer?.address&&<div>{invModal.customer.address}</div>}{invModal.customer?.city&&<div>{invModal.customer.city} {invModal.customer.pincode||""}</div>}</div>
+            <div className="inv-pdet">
+              {invModal.customer?.phone&&<div>📞 {invModal.customer.phone}</div>}
+              {invModal.customer?.altPhone&&<div>📞 Alt: {invModal.customer.altPhone}</div>}
+              {invModal.customer?.email&&<div>✉️ {invModal.customer.email}</div>}
+              {invModal.customer?.gst&&<div>GST: {invModal.customer.gst}</div>}
+              {invModal.customer?.address&&<div>{invModal.customer.address}</div>}
+              {invModal.customer?.city&&<div>{invModal.customer.city} {invModal.customer.pincode||""}</div>}
+            </div>
           </div>
-          <div><div className="inv-plbl">Dispatch</div>{invModal.dispatch?<div className="inv-pdet"><div>Partner: {invModal.dispatch.deliveryPartner||"—"}</div><div>Tracking: {invModal.dispatch.trackingNo||"—"}</div></div>:<div className="inv-pdet" style={{color:"#9CA3AF"}}>Not dispatched yet</div>}</div>
+          <div><div className="inv-plbl">Dispatch</div>
+            {invModal.dispatch?<div className="inv-pdet"><div>Partner: {invModal.dispatch.deliveryPartner||"—"}</div><div>Tracking: {invModal.dispatch.trackingNo||"—"}</div></div>:<div className="inv-pdet" style={{color:"#9CA3AF"}}>Not dispatched yet</div>}
+          </div>
         </div>
-        <table className="inv-tbl"><thead><tr><th>#</th><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
-          <tbody><tr><td>1</td><td><strong>{invModal.unit?.brand} {invModal.unit?.tonnage}</strong><br/><span style={{fontSize:10,color:"#6B7280"}}>{invModal.unit?.model} · Indoor + Outdoor</span></td><td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.id}</td><td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.lot}</td><td><strong>{fmt(invModal.unit?.salePrice)}</strong></td></tr></tbody>
+        <table className="inv-tbl">
+          <thead><tr><th>#</th><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
+          <tbody><tr><td>1</td>
+            <td><strong>{invModal.unit?.brand} {invModal.unit?.tonnage}</strong><br/><span style={{fontSize:10,color:"#6B7280"}}>{invModal.unit?.model} · Indoor + Outdoor Unit</span></td>
+            <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.id}</td>
+            <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.lot}</td>
+            <td><strong>{fmt(invModal.unit?.totalAmount||invModal.unit?.salePrice)}</strong></td>
+          </tr></tbody>
         </table>
+        {/* PAYMENT BREAKDOWN */}
         <div className="inv-tot">
-          <div className="inv-tot-row"><span>Subtotal</span><span>{fmt(invModal.unit?.salePrice)}</span></div>
-          <div className="inv-tot-row"><span>GST (18%)</span><span>{fmt(Math.round((invModal.unit?.salePrice||0)*.18))}</span></div>
-          <div className="inv-tot-final"><span>Total</span><span>{fmt(Math.round((invModal.unit?.salePrice||0)*1.18))}</span></div>
+          <div className="inv-tot-row"><span>Subtotal</span><span>{fmt(invModal.unit?.totalAmount||invModal.unit?.salePrice)}</span></div>
+          {invoiceTemplate?.showGst!==false&&<div className="inv-tot-row"><span>GST (18%)</span><span>{fmt(Math.round((invModal.unit?.totalAmount||invModal.unit?.salePrice||0)*.18))}</span></div>}
+          <div className="inv-tot-final"><span>Total</span><span>{fmt(Math.round((invModal.unit?.totalAmount||invModal.unit?.salePrice||0)*(invoiceTemplate?.showGst!==false?1.18:1)))}</span></div>
+          {(invModal.unit?.bookingAmount||0)>0&&<>
+            <div className="inv-tot-row" style={{marginTop:8,color:"#065F46"}}><span>✅ Booking Collected</span><span>−{fmt(invModal.unit.bookingAmount)}</span></div>
+            <div className="inv-tot-row" style={{color:(invModal.unit?.remainingAmount||0)>0?"#92400E":"#065F46",fontWeight:700}}><span>{(invModal.unit?.remainingAmount||0)>0?"⏳ Balance Due on Delivery":"✅ Fully Paid"}</span><span>{fmt(invModal.unit?.remainingAmount||0)}</span></div>
+          </>}
         </div>
-        <div className="inv-footer">Thank you for choosing CoolStock!</div>
+        {invoiceTemplate?.footer&&<div className="inv-footer">{invoiceTemplate.footer}</div>}
+        {!invoiceTemplate?.footer&&<div className="inv-footer">Thank you for choosing {invoiceTemplate?.companyName||"CoolStock"}!</div>}
       </div>
       <div className="mac">
         <button className="btn bgh" onClick={()=>setInvModal(null)}>Close</button>
         <button className="btn bb" onClick={()=>window.print()}>🖨️ Print</button>
-        <button className="btn bwa" onClick={()=>{ const p=(invModal.customer?.phone||"").replace(/\D/g,""); const msg=encodeURIComponent(`🧾 Invoice: ${invModal.unit?.invoiceNo}\n❄️ CoolStock AC Supplies\n\nDear ${invModal.customer?.name||"Customer"},\nProduct: ${invModal.unit?.brand} ${invModal.unit?.tonnage}\nUnit ID: ${invModal.unit?.id}\nAmount: ${fmt(invModal.unit?.salePrice)}\nThank you! 🙏`); window.open(`https://wa.me/91${p}?text=${msg}`,"_blank"); }}>💬 WhatsApp</button>
+        <button className="btn bwa" onClick={()=>openWaConfirm(invModal.unit)}>💬 WhatsApp</button>
       </div>
     </div></div>}
   </div>;
 }
 
-// ─── DISPATCH ─────────────────────────────────────────────────────────────────
 function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, showToast }) {
   const [sf,setSf]=useState("all"); const [search,setSearch]=useState(""); const [det,setDet]=useState(null); const [sm,setSm]=useState(null);
   const enriched=dispatches.map(d=>({...d,unit:units.find(u=>u.id===d.unitId),customer:customers.find(c=>c.id===d.customerId)}));
@@ -1216,204 +1328,216 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,onLotsChange,onBrand
   </div>;
 }
 
-// ─── DB HELPERS (map between JS camelCase ↔ DB snake_case) ───────────────────
-const toUnit = r => ({
-  id:r.id, warehouse:r.warehouse, lot:r.lot, rfidIn:r.rfid_in, rfidOut:r.rfid_out,
-  model:r.model, brand:r.brand, tonnage:r.tonnage, supplier:r.supplier,
-  receivedDate:r.received_date, salePrice:r.sale_price, status:r.status,
-  qcAttempts:r.qc_attempts, testedBy:r.tested_by, testedDate:r.tested_date,
-  repairNote:r.repair_note, invoiceNo:r.invoice_no, soldTo:r.sold_to,
-  soldDate:r.sold_date, customerPhone:r.customer_phone, soldBy:r.sold_by,
-  paymentReceived:r.payment_received,
-});
-const fromUnit = u => ({
-  id:u.id, warehouse:u.warehouse||"", lot:u.lot||"", rfid_in:u.rfidIn||"",
-  rfid_out:u.rfidOut||"", model:u.model||"", brand:u.brand, tonnage:u.tonnage,
-  supplier:u.supplier||"", received_date:u.receivedDate||"",
-  sale_price:u.salePrice||0, status:u.status, qc_attempts:u.qcAttempts||0,
-  tested_by:u.testedBy||"", tested_date:u.testedDate||"", repair_note:u.repairNote||"",
-  invoice_no:u.invoiceNo||"", sold_to:u.soldTo||"", sold_date:u.soldDate||"",
-  customer_phone:u.customerPhone||"", sold_by:u.soldBy||"",
-  payment_received:u.paymentReceived||false,
-});
-const toWH = r => ({ id:r.id, name:r.name, location:r.location||"", createdDate:r.created_date||"", remark:r.remark||"" });
-const toAppUser = r => ({ id:r.id, name:r.name, username:r.username, password:r.password, role:r.role, modules:r.modules||[], createdDate:r.created_date||"" });
-const toLot = r => ({ id:r.id, number:r.number, createdDate:r.created_date||"", remark:r.remark||"" });
-const toBrand = r => ({ id:r.id, name:r.name, createdDate:r.created_date||"", remark:r.remark||"" });
-const toTonnage = r => ({ id:r.id, value:r.value, createdDate:r.created_date||"", remark:r.remark||"" });
-const toCustomer = r => ({ id:r.id, name:r.name, phone:r.phone||"", altPhone:r.alt_phone||"", email:r.email||"", address:r.address||"", city:r.city||"", pincode:r.pincode||"", gst:r.gst||"", createdDate:r.created_date||"", unitIds:r.unit_ids||[] });
-const toDispatch = r => ({ id:r.id, unitId:r.unit_id, customerId:r.customer_id, invoiceNo:r.invoice_no, stage:r.stage, bookedDate:r.booked_date||"", deliveryPartner:r.delivery_partner||"", trackingNo:r.tracking_no||"", notes:r.notes||"", deliveredDate:r.delivered_date||"", paymentReceivedDate:r.payment_received_date||"" });
 
-// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+// ─── MASTER PAGE (v7: added Invoice Template tab) ────────────────────────────
+function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLotsChange,onBrandsChange,onTonnagesChange,onWHChange,onUsersChange,onInvoiceTemplateChange,showToast }) {
+  const [tab,setTab]=useState("wh"); const [modal,setModal]=useState(null); const [form,setForm]=useState({}); const f=v=>setForm(p=>({...p,...v}));
+  const [umod,setUmod]=useState(null); const [uform,setUform]=useState({}); const uf=v=>setUform(p=>({...p,...v}));
+  const [invForm,setInvForm]=useState(invoiceTemplate||{companyName:"CoolStock AC Supplies",tagline:"Premium AC Sales · Your City",gstLine:"GST: YOUR-GST-NUMBER",footer:"Thank you for your business!",showGst:true,waTemplate:DEFAULT_TEMPLATE});
+  const sets={ lots:{data:lots,set:onLotsChange,key:"number",label:"Lot Number"}, brands:{data:brands,set:onBrandsChange,key:"name",label:"Brand Name"}, tonnages:{data:tonnages,set:onTonnagesChange,key:"value",label:"Tonnage"}, wh:{data:warehouses,set:onWHChange,key:"name",label:"Warehouse Name"} };
+  const openAdd=t=>{setModal({t,item:null});setForm({createdDate:today()});}; const openEdit=(t,item)=>{setModal({t,item});setForm({...item});};
+  const save=()=>{ const{t,item}=modal; const s=sets[t]; if(!form[s.key])return; const id=genId(); item?s.set(s.data.map(x=>x.id===item.id?{...x,...form}:x)):s.set([...s.data,{...form,id}]); setModal(null);showToast("Saved ✅"); };
+  const del=(t,id)=>{ const s=sets[t]; s.set(s.data.filter(x=>x.id!==id)); showToast("Deleted","warn"); };
+  const saveUser=()=>{ if(!uform.name||!uform.username||!uform.password)return; const item=umod.item; item?onUsersChange(users.map(u=>u.id===item.id?{...u,...uform}:u)):onUsersChange([...users,{...uform,id:genId()}]); setUmod(null);showToast("User saved ✅"); };
+  const togMod=mid=>{ const m=uform.modules||[]; setUform(p=>({...p,modules:m.includes(mid)?m.filter(x=>x!==mid):[...m,mid]})); };
+  const TABS=[{id:"wh",l:"🏭 Warehouses"},{id:"lots",l:"📦 Lots"},{id:"brands",l:"🏷️ Brands"},{id:"tonnages",l:"📐 Tonnage"},{id:"users",l:"👤 Users"},{id:"perms",l:"🔐 Perms"},{id:"invoice",l:"🧾 Invoice"}];
+
+  const MasterSection = ({ type }) => {
+    const s=sets[type]; const extraCols=type==="wh"?["location"]:[];
+    return <div className="card"><div className="chd"><div><div className="ct">{type==="wh"?"🏭 Warehouse Master":type==="lots"?"📦 Lot Master":type==="brands"?"🏷️ Brand Master":"📐 Tonnage Master"}</div><div className="cs">Only items here appear in Stock Intake dropdowns</div></div><button className="btn bp" onClick={()=>openAdd(type)}>+ Add</button></div>
+      {s.data.length===0?<div className="empty"><div className="et">No records yet</div></div>:(
+        <div className="tw"><table><thead><tr><th>{s.label}</th>{extraCols.map(c=><th key={c}>{c}</th>)}<th>Created Date</th><th>Remark</th><th>Actions</th></tr></thead>
+          <tbody>{s.data.map(item=><tr key={item.id}>
+            <td style={{fontWeight:600}}>{item[s.key]}</td>
+            {extraCols.map(c=><td key={c} style={{fontSize:11,color:"var(--mu2)"}}>{item[c]||"—"}</td>)}
+            <td style={{fontSize:10.5}}>{item.createdDate}</td>
+            <td style={{fontSize:11,color:"var(--mu2)"}}>{item.remark||"—"}</td>
+            <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>openEdit(type,item)}>Edit</button><button className="btn br bsm" onClick={()=>del(type,item.id)}>Del</button></div></td>
+          </tr>)}</tbody>
+        </table></div>
+      )}
+    </div>;
+  };
+
+  return <div>
+    <div className="ph"><div><div className="pt">⚙️ Master & Admin</div><div className="ps">Admin only</div></div></div>
+    <div className="mtabs">{TABS.map(t=><button key={t.id} className={`mtab ${tab===t.id?"on":""}`} onClick={()=>setTab(t.id)}>{t.l}</button>)}</div>
+    {(tab==="wh"||tab==="lots"||tab==="brands"||tab==="tonnages")&&<MasterSection type={tab}/>}
+
+    {tab==="users"&&<div className="card"><div className="chd"><div><div className="ct">👤 Users ({users.length})</div></div><button className="btn bp" onClick={()=>{setUmod({item:null});setUform({name:"",username:"",password:"",role:"technician",modules:["dashboard"],createdDate:today()});}}>+ Add</button></div>
+      <div className="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Modules</th><th>Actions</th></tr></thead>
+        <tbody>{users.map(u=><tr key={u.id}>
+          <td><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,var(--ac),var(--ac2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,flexShrink:0}}>{u.name[0]}</div><span style={{fontWeight:600,fontSize:11.5}}>{u.name}</span></div></td>
+          <td style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"var(--ac)"}}>{u.username}</td>
+          <td><span className="badge" style={{background:u.role==="admin"?"rgba(251,191,36,.12)":"rgba(56,189,248,.12)",color:u.role==="admin"?"var(--am)":"var(--ac)"}}>{u.role}</span></td>
+          <td style={{fontSize:10.5,color:"var(--mu2)"}}>{(u.modules||[]).length} modules</td>
+          <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>{setUmod({item:u});setUform({...u});}}>Edit</button>{u.role!=="admin"&&<button className="btn br bsm" onClick={()=>{ onUsersChange(users.filter(x=>x.id!==u.id)); showToast("Deleted","warn"); }}>Del</button>}</div></td>
+        </tr>)}</tbody>
+      </table></div>
+    </div>}
+
+    {tab==="perms"&&<div className="card"><div className="chd"><div className="ct">🔐 Permission Matrix</div></div>
+      <div className="tw"><table><thead><tr><th>User</th>{ALL_MODULES.map(m=><th key={m.id} style={{textAlign:"center"}}>{m.icon}<br/><span style={{fontSize:8}}>{m.label.split(" ")[0]}</span></th>)}</tr></thead>
+        <tbody>{users.map(u=><tr key={u.id}><td><b style={{fontSize:11.5}}>{u.name}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.role}</span></td>{ALL_MODULES.map(m=><td key={m.id} style={{textAlign:"center"}}>{(u.modules||[]).includes(m.id)?<span style={{color:"var(--gr)"}}>✅</span>:<span style={{color:"#1E293B"}}>✗</span>}</td>)}</tr>)}</tbody>
+      </table></div>
+    </div>}
+
+    {/* INVOICE TEMPLATE TAB */}
+    {tab==="invoice"&&<div>
+      <div className="card">
+        <div className="chd"><div><div className="ct">🧾 Invoice & WhatsApp Template</div><div className="cs">Customise your invoice header and WhatsApp message format</div></div></div>
+        <div className="al al-b">ℹ️ <div>Changes here affect all new invoices and WhatsApp messages. Use <code style={{fontFamily:"monospace",fontSize:11}}>{"{variable}"}</code> placeholders in the WhatsApp template.</div></div>
+        <div className="fg2" style={{marginBottom:14}}>
+          <div className="fi"><label className="fl">Company Name</label><input className="fn" value={invForm.companyName||""} onChange={e=>setInvForm(p=>({...p,companyName:e.target.value}))} placeholder="Your company name"/></div>
+          <div className="fi"><label className="fl">Tagline</label><input className="fn" value={invForm.tagline||""} onChange={e=>setInvForm(p=>({...p,tagline:e.target.value}))} placeholder="e.g. Premium AC Sales"/></div>
+          <div className="fi"><label className="fl">GST Line</label><input className="fn" value={invForm.gstLine||""} onChange={e=>setInvForm(p=>({...p,gstLine:e.target.value}))} placeholder="GST: YOUR-NUMBER"/></div>
+          <div className="fi"><label className="fl">Invoice Footer</label><input className="fn" value={invForm.footer||""} onChange={e=>setInvForm(p=>({...p,footer:e.target.value}))} placeholder="Thank you message..."/></div>
+          <div className="fi full" style={{flexDirection:"row",alignItems:"center",gap:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+              <input type="checkbox" checked={invForm.showGst!==false} onChange={e=>setInvForm(p=>({...p,showGst:e.target.checked}))} style={{accentColor:"var(--ac)",width:14,height:14}}/>
+              Show GST 18% on invoice
+            </label>
+          </div>
+        </div>
+        <div className="fi" style={{marginBottom:14}}>
+          <label className="fl">WhatsApp Message Template</label>
+          <div style={{fontSize:10.5,color:"var(--mu2)",marginBottom:6}}>Available placeholders: <code style={{fontFamily:"monospace",color:"var(--ac2)"}}>&#123;company&#125; &#123;invoice&#125; &#123;customer&#125; &#123;product&#125; &#123;unitId&#125; &#123;lot&#125; &#123;total&#125; &#123;booking&#125; &#123;remaining&#125; &#123;address&#125; &#123;date&#125; &#123;partner&#125; &#123;tracking&#125;</code></div>
+          <textarea className="fn" style={{minHeight:200,fontSize:12,fontFamily:"'JetBrains Mono',monospace"}} value={invForm.waTemplate||DEFAULT_TEMPLATE} onChange={e=>setInvForm(p=>({...p,waTemplate:e.target.value}))}/>
+        </div>
+        <div style={{display:"flex",gap:8"}}>
+          <button className="btn bp" onClick={()=>{onInvoiceTemplateChange(invForm);showToast("Invoice template saved ✅");}}>Save Template →</button>
+          <button className="btn bgh" onClick={()=>{setInvForm({companyName:"CoolStock AC Supplies",tagline:"Premium AC Sales · Your City",gstLine:"GST: YOUR-GST-NUMBER",footer:"Thank you for your business!",showGst:true,waTemplate:DEFAULT_TEMPLATE});showToast("Reset to default","warn");}}>Reset Default</button>
+        </div>
+      </div>
+    </div>}
+
+    {modal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setModal(null)}><div className="mo">
+      <div className="mti">{modal.item?"Edit":"Add"} {sets[modal.t].label}</div>
+      <div className="fg2">
+        <div className="fi"><label className="fl">{sets[modal.t].label} *</label><input className="fn" value={form[sets[modal.t].key]||""} onChange={e=>f({[sets[modal.t].key]:e.target.value})} placeholder={modal.t==="wh"?"e.g. Warehouse 3":modal.t==="lots"?"LOT-2024-XXX":modal.t==="brands"?"e.g. Carrier":"e.g. 3.5 Ton"}/></div>
+        <div className="fi"><label className="fl">Created Date</label><input type="date" className="fn" value={form.createdDate||""} onChange={e=>f({createdDate:e.target.value})}/></div>
+        {modal.t==="wh"&&<div className="fi full"><label className="fl">Location / Address</label><input className="fn" value={form.location||""} onChange={e=>f({location:e.target.value})} placeholder="e.g. MIDC, Thane"/></div>}
+        <div className="fi full"><label className="fl">Remark</label><input className="fn" value={form.remark||""} onChange={e=>f({remark:e.target.value})} placeholder="Optional..."/></div>
+      </div>
+      <div className="mac"><button className="btn bgh" onClick={()=>setModal(null)}>Cancel</button><button className="btn bp" onClick={save}>Save →</button></div>
+    </div></div>}
+
+    {umod&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setUmod(null)}><div className="mo">
+      <div className="mti">{umod.item?"Edit":"Add"} User</div><div className="msu">Set credentials and assign module access</div>
+      <div className="fg2">
+        <div className="fi"><label className="fl">Full Name *</label><input className="fn" value={uform.name||""} onChange={e=>uf({name:e.target.value})}/></div>
+        <div className="fi"><label className="fl">Username *</label><input className="fn" value={uform.username||""} onChange={e=>uf({username:e.target.value})}/></div>
+        <div className="fi"><label className="fl">Password *</label><input type="password" className="fn" value={uform.password||""} onChange={e=>uf({password:e.target.value})}/></div>
+        <div className="fi"><label className="fl">Role</label><select className="fs" value={uform.role||"technician"} onChange={e=>uf({role:e.target.value})}><option value="technician">Technician</option><option value="sales">Sales</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
+      </div>
+      <div style={{marginTop:11}}><div className="fl" style={{marginBottom:8}}>MODULE ACCESS</div>
+        <div className="mod-grid">{ALL_MODULES.map(m=>{ const chk=(uform.modules||[]).includes(m.id); return <div key={m.id} className={`mod-item ${chk?"chk":""}`} onClick={()=>togMod(m.id)}><div className="mod-chk">{chk&&<span style={{fontSize:8,color:"#fff",fontWeight:900}}>✓</span>}</div><span style={{fontSize:11}}>{m.icon} {m.label}</span></div>; })}</div>
+      </div>
+      <div className="mac"><button className="btn bgh" onClick={()=>setUmod(null)}>Cancel</button><button className="btn bp" onClick={saveUser}>Save User →</button></div>
+    </div></div>}
+  </div>;
+}
+
+// ─── DEFAULT WA TEMPLATE ──────────────────────────────────────────────────────
+const DEFAULT_TEMPLATE = `🧾 Invoice: {invoice}
+❄️ {company}
+
+Dear {customer},
+
+Your AC unit purchase details:
+• Product: {product}
+• Unit ID: {unitId}
+• Lot: {lot}
+• Sale Date: {date}
+
+💰 Payment Details:
+• Total Amount: {total}
+• Booking Paid: {booking}
+• Balance on Delivery: {remaining}
+
+📍 Delivery Address: {address}
+
+🚚 Delivery Partner: {partner}
+📦 Tracking: {tracking}
+
+Thank you for your purchase! 🙏
+For any queries please call us.`;
+
+// ─── ROOT APP (v7: persist login, add unit fix, split payment) ────────────────
 export default function App() {
   const getSb = () => { try{ return localStorage.getItem("cs_sb")!=="0"; }catch{ return true; } };
   const [sbOpen,setSbOpen] = useState(getSb);
   const toggleSb = () => setSbOpen(p=>{ try{localStorage.setItem("cs_sb",p?"0":"1");}catch{} return !p; });
 
-  // ── STATE ──────────────────────────────────────────────────────────────────
-  const [users,      setUsers]     = useState([]);
-  const [user,       setUser]      = useState(null);
-  const [units,      setUnits]     = useState([]);
-  const [lots,       setLots]      = useState([]);
-  const [brands,     setBrands]    = useState([]);
-  const [tonnages,   setTonnages]  = useState([]);
-  const [warehouses, setWarehouses]= useState([]);
-  const [customers,  setCustomers] = useState([]);
-  const [dispatches, setDispatches]= useState([]);
-  const [page,       setPage]      = useState("dashboard");
-  const [toast,      setToast]     = useState(null);
-  const [verifs,     setVerifs]    = useState([]);
-  const [rfidUnit,   setRfidUnit]  = useState(null);
-  const [invCtr,     setInvCtr]    = useState(1);
-  const [loading,    setLoading]   = useState(true);
+  // ── PERSIST LOGIN via localStorage ────────────────────────────────────────
+  const [users,      setUsers]      = useState(SEED_USERS);
+  const [user,       setUser]       = useState(()=>{ try{ const s=localStorage.getItem("cs_user"); return s?JSON.parse(s):null; }catch{ return null; } });
+  const [units,      setUnits]      = useState(SEED_UNITS);
+  const [lots,       setLots]       = useState(SEED_LOTS);
+  const [brands,     setBrands]     = useState(SEED_BRANDS);
+  const [tonnages,   setTonnages]   = useState(SEED_TONNAGES);
+  const [warehouses, setWarehouses] = useState(SEED_WH);
+  const [customers,  setCustomers]  = useState(SEED_CUSTOMERS);
+  const [dispatches, setDispatches] = useState(SEED_DISPATCHES);
+  const [invoiceTemplate, setInvoiceTemplate] = useState(()=>{ try{ const s=localStorage.getItem("cs_inv_tpl"); return s?JSON.parse(s):null; }catch{ return null; } });
+  const [page,       setPage]       = useState("dashboard");
+  const [toast,      setToast]      = useState(null);
+  const [verifs,     setVerifs]     = useState([]);
+  const [rfidUnit,   setRfidUnit]   = useState(null);
+  const [invCtr,     setInvCtr]     = useState(1);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
 
   const showToast=(msg,type="success")=>setToast({message:msg,type});
 
-  // ── INITIAL LOAD ───────────────────────────────────────────────────────────
-  useEffect(()=>{
-    async function loadAll() {
-      setLoading(true);
-      const [wh,lo,br,to,us,un,cu,di] = await Promise.all([
-        supabase.from("warehouses").select("*"),
-        supabase.from("lots").select("*"),
-        supabase.from("brands").select("*"),
-        supabase.from("tonnages").select("*"),
-        supabase.from("app_users").select("*"),
-        supabase.from("units").select("*"),
-        supabase.from("customers").select("*"),
-        supabase.from("dispatches").select("*"),
-      ]);
-      if(wh.data) setWarehouses(wh.data.map(toWH));
-      if(lo.data) setLots(lo.data.map(toLot));
-      if(br.data) setBrands(br.data.map(toBrand));
-      if(to.data) setTonnages(to.data.map(toTonnage));
-      if(us.data) setUsers(us.data.map(toAppUser));
-      if(un.data) setUnits(un.data.map(toUnit));
-      if(cu.data) setCustomers(cu.data.map(toCustomer));
-      if(di.data) setDispatches(di.data.map(toDispatch));
-
-      // set invoice counter from existing invoices
-      if(un.data){
-        const nums=un.data.map(u=>parseInt((u.invoice_no||"").replace("INV-",""))||0);
-        if(nums.length>0) setInvCtr(Math.max(...nums));
-      }
-      setLoading(false);
-    }
-    loadAll();
-  },[]);
-
-  // ── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────
-  useEffect(()=>{
-    const sub = supabase
-      .channel("coolstock-realtime")
-      .on("postgres_changes",{event:"*",schema:"public",table:"units"},        payload=>handleChange(payload,"units"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"customers"},     payload=>handleChange(payload,"customers"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"dispatches"},    payload=>handleChange(payload,"dispatches"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"warehouses"},    payload=>handleChange(payload,"warehouses"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"lots"},          payload=>handleChange(payload,"lots"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"brands"},        payload=>handleChange(payload,"brands"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"tonnages"},      payload=>handleChange(payload,"tonnages"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"app_users"},     payload=>handleChange(payload,"app_users"))
-      .subscribe();
-    return ()=>supabase.removeChannel(sub);
-  },[]);
-
-  function handleChange(payload, table) {
-    const {eventType, new:n, old:o} = payload;
-    const converters = { units:toUnit, customers:toCustomer, dispatches:toDispatch, warehouses:toWH, lots:toLot, brands:toBrand, tonnages:toTonnage, app_users:toAppUser };
-    const setters = { units:setUnits, customers:setCustomers, dispatches:setDispatches, warehouses:setWarehouses, lots:setLots, brands:setBrands, tonnages:setTonnages, app_users:setUsers };
-    const conv = converters[table]; const setter = setters[table];
-    if(!conv||!setter) return;
-    if(eventType==="INSERT") setter(p=>[...p.filter(x=>x.id!==conv(n).id), conv(n)]);
-    if(eventType==="UPDATE") setter(p=>p.map(x=>x.id===conv(n).id?conv(n):x));
-    if(eventType==="DELETE") setter(p=>p.filter(x=>x.id!==o.id));
-  }
-
-  // ── DB ACTIONS ─────────────────────────────────────────────────────────────
-  const addUnit = async u => {
-    const { error } = await supabase.from("units").insert(fromUnit(u));
-    if(error) { showToast("Error saving unit ❌","error"); return; }
-    showToast(`${u.id} registered 📦`);
+  // Save user to localStorage when they log in
+  const handleLogin = u => {
+    try{ localStorage.setItem("cs_user", JSON.stringify(u)); }catch{}
+    setUser(u);
+    setPage((u.modules||["dashboard"])[0]);
   };
 
-  const updateUnit = async (id, ch) => {
-    const cur = units.find(u=>u.id===id);
-    if(!cur) return;
-    const merged = { ...cur, ...ch };
-    const dbRow = fromUnit(merged);
-    const { error } = await supabase.from("units").update(dbRow).eq("id",id);
-    if(error) { showToast("Error updating unit ❌","error"); return; }
-    const m={available:`${id} passed QC ✅`,under_repair:`${id} → Repair 🔧`,sold:`${id} sold 💰`,pending_qc:`${id} → QC 🔄`};
-    if(ch.status) showToast(m[ch.status]||`${id} updated`);
+  // Logout with confirmation
+  const handleLogout = () => {
+    try{ localStorage.removeItem("cs_user"); }catch{}
+    setUser(null);
+    setLogoutConfirm(false);
   };
 
-  const transferUnit = async (id, wh) => {
-    await supabase.from("units").update({ warehouse:wh }).eq("id",id);
-    const w=warehouses.find(x=>x.id===wh);
-    showToast(`Transferred to ${w?.name||wh} 🏭`);
+  // Save invoice template to localStorage
+  const handleInvoiceTemplateChange = tpl => {
+    setInvoiceTemplate(tpl);
+    try{ localStorage.setItem("cs_inv_tpl", JSON.stringify(tpl)); }catch{}
   };
 
-  const addCustomer = async (c, upd) => {
-    const dbRow = { id:c.id, name:c.name, phone:c.phone||"", alt_phone:c.altPhone||"", email:c.email||"", address:c.address||"", city:c.city||"", pincode:c.pincode||"", gst:c.gst||"", created_date:c.createdDate||"", unit_ids:c.unitIds||[] };
-    if(upd) await supabase.from("customers").update(dbRow).eq("id",c.id);
-    else await supabase.from("customers").insert(dbRow);
+  // ── DATA MUTATIONS ─────────────────────────────────────────────────────────
+  const addUnit = u => {
+    // Generate ID based on current max, not just length (handles gaps after deletes)
+    const maxNum = units.reduce((max, x) => {
+      const n = parseInt((x.id||"").replace("AC-",""))||0;
+      return Math.max(max,n);
+    }, 0);
+    const newId = "AC-" + String(maxNum+1).padStart(3,"0");
+    const newUnit = { ...u, id: newId };
+    setUnits(p=>[...p, newUnit]);
+    showToast(`${newId} registered 📦`);
   };
 
-  const addDispatch = async d => {
-    const dbRow = { id:d.id, unit_id:d.unitId, customer_id:d.customerId, invoice_no:d.invoiceNo, stage:d.stage, booked_date:d.bookedDate||"", delivery_partner:d.deliveryPartner||"", tracking_no:d.trackingNo||"", notes:d.notes||"", delivered_date:"", payment_received_date:"" };
-    await supabase.from("dispatches").insert(dbRow);
-    showToast("Dispatch created 🚚");
-  };
+  const updateUnit=(id,ch)=>{ setUnits(p=>p.map(u=>u.id===id?{...u,...ch}:u)); const m={available:`${id} passed QC ✅`,under_repair:`${id} → Repair 🔧`,sold:`${id} sold 💰`,pending_qc:`${id} → QC 🔄`}; if(ch.status)showToast(m[ch.status]||`${id} updated`); };
+  const transferUnit=(id,wh)=>{ setUnits(p=>p.map(u=>u.id===id?{...u,warehouse:wh}:u)); const w=warehouses.find(x=>x.id===wh); showToast(`Transferred to ${w?.name||wh} 🏭`); };
+  const addCustomer=(c,upd)=>{ if(upd)setCustomers(p=>p.map(x=>x.id===c.id?c:x)); else setCustomers(p=>[...p,c]); };
+  const addDispatch=d=>setDispatches(p=>[...p,d]);
+  const updateDispatch=(id,ch)=>setDispatches(p=>p.map(d=>d.id===id?{...d,...ch}:d));
+  const onVerif=r=>{ setVerifs(p=>[r,...p]); showToast(r.discrepancies>0?`${r.discrepancies} discrepancy ⚠️`:"Verification clear ✅",r.discrepancies>0?"warn":"success"); };
 
-  const updateDispatch = async (id, ch) => {
-    const cur = dispatches.find(d=>d.id===id);
-    if(!cur) return;
-    const dbRow = { stage:ch.stage||cur.stage, delivered_date:ch.deliveredDate||cur.deliveredDate||"", payment_received_date:ch.paymentReceivedDate||cur.paymentReceivedDate||"" };
-    await supabase.from("dispatches").update(dbRow).eq("id",id);
-  };
-
-  const onVerif = async r => {
-    setVerifs(p=>[r,...p]);
-    await supabase.from("verifications").insert({ date:r.date, time:r.time, by_user:r.by, warehouse:r.warehouse||"all", scanned:r.scanned, total:r.total, discrepancies:r.discrepancies, note:r.note||"", status:r.status });
-    showToast(r.discrepancies>0?`${r.discrepancies} discrepancy ⚠️`:"Verification clear ✅", r.discrepancies>0?"warn":"success");
-  };
-
-  // Master data savers
-  const saveMaster = async (table, rows, mapper) => {
-    // upsert all rows — Supabase handles insert+update in one call
-    const dbRows = rows.map(mapper);
-    await supabase.from(table).upsert(dbRows);
-  };
-
-  const setLotsDB      = rows => { setLots(rows);      saveMaster("lots",      rows, r=>({id:r.id,number:r.number,created_date:r.createdDate||"",remark:r.remark||""})); };
-  const setBrandsDB    = rows => { setBrands(rows);    saveMaster("brands",    rows, r=>({id:r.id,name:r.name,created_date:r.createdDate||"",remark:r.remark||""})); };
-  const setTonnagesDB  = rows => { setTonnages(rows);  saveMaster("tonnages",  rows, r=>({id:r.id,value:r.value,created_date:r.createdDate||"",remark:r.remark||""})); };
-  const setWHDB        = rows => { setWarehouses(rows);saveMaster("warehouses",rows, r=>({id:r.id,name:r.name,location:r.location||"",created_date:r.createdDate||"",remark:r.remark||""})); };
-  const setUsersDB     = rows => { setUsers(rows);     saveMaster("app_users", rows, r=>({id:r.id,name:r.name,username:r.username,password:r.password,role:r.role,modules:r.modules||[],created_date:r.createdDate||""})); };
-
-  // keep logged-in user object fresh after users table update
-  useEffect(()=>{ if(user){ const f=users.find(u=>u.id===user.id); if(f&&JSON.stringify(f)!==JSON.stringify(user))setUser(f); } },[users]);
+  // Keep logged-in user fresh if users list changes
+  useEffect(()=>{ if(user){ const f=users.find(u=>u.id===user.id); if(f&&f.password!==undefined){ setUser(prev=>{ const updated={...prev,...f}; try{localStorage.setItem("cs_user",JSON.stringify(updated));}catch{} return updated; }); } } },[users]);
   const userMods=user?.modules||[];
   useEffect(()=>{ if(user&&!userMods.includes(page))setPage(userMods[0]||"dashboard"); },[userMods]);
 
   const pendQC=units.filter(u=>u.status==="pending_qc").length;
   const pendDisp=dispatches.filter(d=>d.stage!=="paid").length;
 
-  // ── LOADING SCREEN ─────────────────────────────────────────────────────────
-  if(loading) return <>
-    <style>{CSS}</style>
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"var(--bg)",gap:16}}>
-      <div style={{fontSize:36}}>❄️</div>
-      <div style={{fontSize:16,fontWeight:700,color:"var(--ac)"}}>CoolStock</div>
-      <div style={{fontSize:12,color:"var(--mu2)"}}>Connecting to database...</div>
-      <div style={{width:140,height:3,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden",marginTop:8}}>
-        <div style={{width:"60%",height:"100%",background:"linear-gradient(90deg,var(--ac),var(--ac2))",borderRadius:20,animation:"slide 1.2s ease infinite"}}/>
-      </div>
-      <style>{`@keyframes slide{0%{margin-left:-60%}100%{margin-left:100%}}`}</style>
-    </div>
-  </>;
-
-  if(!user) return <><style>{CSS}</style><Login users={users} onLogin={u=>{setUser(u);setPage((u.modules||["dashboard"])[0]);}}/></>;
+  if(!user) return <><style>{CSS}</style><Login users={users} onLogin={handleLogin}/></>;
 
   return <>
     <style>{CSS}</style>
@@ -1421,7 +1545,7 @@ export default function App() {
       <aside className={`sb ${sbOpen?"":"col"}`}>
         <div className="sb-top">
           <div className="sb-ico" onClick={toggleSb} title={sbOpen?"Collapse":"Expand"}>❄️</div>
-          <div className="sb-txt"><div className="sb-name">Cool<em>Stock</em></div><div className="sb-tag">v6 · AC Inventory</div></div>
+          <div className="sb-txt"><div className="sb-name">Cool<em>Stock</em></div><div className="sb-tag">v7 · AC Inventory</div></div>
         </div>
         <GlobalSearch units={units} warehouses={warehouses} onSelect={u=>setRfidUnit(u)} collapsed={!sbOpen}/>
         <nav className="sb-nav">
@@ -1439,7 +1563,7 @@ export default function App() {
           <div className="urow">
             <div className="uav">{user.name[0]}</div>
             <div className="u-inf"><div className="uname">{user.name}</div><div className="urole">{user.role}</div></div>
-            <button className="uout" onClick={()=>setUser(null)} title="Logout">↩</button>
+            <button className="uout" onClick={()=>setLogoutConfirm(true)} title="Logout">↩</button>
           </div>
         </div>
       </aside>
@@ -1448,15 +1572,26 @@ export default function App() {
         {page==="dashboard" && <Dashboard units={units} tonnages={tonnages} warehouses={warehouses} customers={customers} dispatches={dispatches}/>}
         {page==="intake"    && <StockIntake units={units} lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} onAdd={addUnit} onTransfer={transferUnit} user={user}/>}
         {page==="qc"        && <QCModule units={units} warehouses={warehouses} onUpdate={updateUnit} user={user}/>}
-        {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr}/>}
-        {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast}/>}
+        {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
+        {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
         {page==="verify"    && <StockVerify units={units} warehouses={warehouses} user={user} onVerificationComplete={onVerif}/>}
-        {page==="master"    && <MasterPage lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} users={users} onLotsChange={setLotsDB} onBrandsChange={setBrandsDB} onTonnagesChange={setTonnagesDB} onWHChange={setWHDB} onUsersChange={setUsersDB} showToast={showToast}/>}
+        {page==="master"    && <MasterPage lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} users={users} invoiceTemplate={invoiceTemplate} onLotsChange={setLots} onBrandsChange={setBrands} onTonnagesChange={setTonnages} onWHChange={setWarehouses} onUsersChange={setUsers} onInvoiceTemplateChange={handleInvoiceTemplateChange} showToast={showToast}/>}
       </main>
 
       {rfidUnit&&<RFIDDetail unit={rfidUnit} customers={customers} dispatches={dispatches} warehouses={warehouses} onClose={()=>setRfidUnit(null)}/>}
       {toast&&<Toast {...toast} onClose={()=>setToast(null)}/>}
+
+      {/* LOGOUT CONFIRMATION */}
+      {logoutConfirm&&<div className="ov" onClick={()=>setLogoutConfirm(false)}><div className="mo" style={{maxWidth:380,textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:12}}>👋</div>
+        <div className="mti">Log out?</div>
+        <div className="msu">You are logged in as <strong>{user.name}</strong></div>
+        <div className="mac" style={{justifyContent:"center"}}>
+          <button className="btn bgh" onClick={()=>setLogoutConfirm(false)}>Cancel</button>
+          <button className="btn br" onClick={handleLogout}>Yes, Log Out</button>
+        </div>
+      </div></div>}
     </div>
   </>;
 }
