@@ -456,6 +456,283 @@ function Login({ users, onLogin }) {
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
+
+// ─── EXCEL EXPORT ────────────────────────────────────────────────────────────
+function exportAllToExcel(units, customers, dispatches, warehouses) {
+  // Build CSV content for each sheet then trigger download as .xlsx via SheetJS CDN
+  function loadAndExport() {
+    if (!window.XLSX) {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.onload = doExport;
+      s.onerror = () => alert("Could not load Excel library. Check internet connection.");
+      document.head.appendChild(s);
+    } else { doExport(); }
+  }
+
+  function doExport() {
+    const wb = window.XLSX.utils.book_new();
+    const dt = new Date().toISOString().slice(0,10);
+    const whName = id => warehouses.find(w=>w.id===id)?.name||id||"—";
+
+    // Sheet 1 — All Stock
+    const allRows = units.map(u=>({
+      "Unit ID":u.id, "Status":u.status?.replace("_"," "),
+      "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
+      "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
+      "Supplier":u.supplier||"", "Received Date":u.receivedDate||"",
+      "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
+      "QC Attempts":u.qcAttempts||0, "Tested By":u.testedBy||"", "Tested Date":u.testedDate||"",
+      "Repair Note":u.repairNote||"", "Invoice No":u.invoiceNo||"",
+      "Sold To":u.soldTo||"", "Sold Date":u.soldDate||"",
+      "Customer Phone":u.customerPhone||"", "Sold By":u.soldBy||"",
+      "Payment Received":u.paymentReceived?"Yes":"No",
+      "Booking Amount":u.bookingAmount||0, "Total Amount":u.totalAmount||0,
+      "Remaining Amount":u.remainingAmount||0,
+    }));
+    const ws1 = window.XLSX.utils.json_to_sheet(allRows.length?allRows:[{"Message":"No units yet"}]);
+    ws1["!cols"] = [{wch:10},{wch:14},{wch:14},{wch:14},{wch:10},{wch:10},{wch:14},{wch:16},{wch:14},{wch:12},{wch:14},{wch:15},{wch:12},{wch:14},{wch:12},{wch:20},{wch:12},{wch:18},{wch:12},{wch:15},{wch:12},{wch:16},{wch:14},{wch:14},{wch:16}];
+    window.XLSX.utils.book_append_sheet(wb, ws1, "All Stock");
+
+    // Sheet 2 — Available
+    const avail = units.filter(u=>u.status==="available").map(u=>({
+      "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
+      "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
+      "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
+      "Received Date":u.receivedDate||"", "Tested By":u.testedBy||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(avail.length?avail:[{"Message":"No available units"}]), "Available Stock");
+
+    // Sheet 3 — Sold
+    const sold = units.filter(u=>u.status==="sold").map(u=>({
+      "Unit ID":u.id, "Invoice No":u.invoiceNo||"", "Lot":u.lot||"",
+      "Brand":u.brand, "Tonnage":u.tonnage, "Warehouse":whName(u.warehouse),
+      "Total Amount":u.totalAmount||u.salePrice||0, "Booking":u.bookingAmount||0,
+      "Remaining":u.remainingAmount||0, "Payment":u.paymentReceived?"Received":"Pending",
+      "Customer":u.soldTo||"", "Phone":u.customerPhone||"",
+      "Sold Date":u.soldDate||"", "Sold By":u.soldBy||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sold.length?sold:[{"Message":"No sold units"}]), "Sold Units");
+
+    // Sheet 4 — Pending QC
+    const qc = units.filter(u=>u.status==="pending_qc").map(u=>({
+      "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
+      "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
+      "Sale Price":u.salePrice||0, "Received Date":u.receivedDate||"",
+      "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(qc.length?qc:[{"Message":"No units pending QC"}]), "Pending QC");
+
+    // Sheet 5 — Under Repair
+    const rep = units.filter(u=>u.status==="under_repair").map(u=>({
+      "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
+      "Brand":u.brand, "Tonnage":u.tonnage, "Repair Note":u.repairNote||"",
+      "Tested By":u.testedBy||"", "Tested Date":u.testedDate||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rep.length?rep:[{"Message":"No units under repair"}]), "Under Repair");
+
+    // Sheet 6 — Customers
+    const custs = customers.map(c=>({
+      "Name":c.name, "Phone":c.phone||"", "Alt Phone":c.altPhone||"",
+      "Email":c.email||"", "Address":c.address||"", "City":c.city||"",
+      "Pincode":c.pincode||"", "GST":c.gst||"",
+      "Units Purchased":(c.unitIds||[]).join(", "), "Joined":c.createdDate||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(custs.length?custs:[{"Message":"No customers yet"}]), "Customers");
+
+    // Sheet 7 — Dispatches
+    const disps = dispatches.map(d=>({
+      "Unit ID":d.unitId||"", "Invoice":d.invoiceNo||"",
+      "Stage":d.stage||"", "Partner":d.deliveryPartner||"",
+      "Tracking":d.trackingNo||"", "Booked":d.bookedDate||"",
+      "Delivered":d.deliveredDate||"", "Payment Date":d.paymentReceivedDate||"",
+      "Notes":d.notes||"",
+    }));
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(disps.length?disps:[{"Message":"No dispatches yet"}]), "Dispatches");
+
+    window.XLSX.writeFile(wb, `CoolStock_Backup_${dt}.xlsx`);
+  }
+  loadAndExport();
+}
+
+// ─── EXCEL IMPORT (bulk upload) ───────────────────────────────────────────────
+function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd, onClose }) {
+  const [step, setStep] = useState(0); // 0=drop 1=preview 2=done
+  const [rows, setRows] = useState([]);
+  const [errors, setErrors] = useState({});
+  const [editIdx, setEditIdx] = useState(null);
+  const [editRow, setEditRow] = useState(null);
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef();
+
+  const lotNums   = lots.map(l=>l.number);
+  const brandNams = brands.map(b=>b.name);
+  const tonVals   = tonnages.map(t=>t.value);
+  const whIds     = warehouses.map(w=>w.id);
+
+  const FIELD_MAP = {
+    "lot number":"lot","lot":"lot","brand":"brand","tonnage":"tonnage",
+    "model name":"model","model":"model","supplier":"supplier",
+    "received date":"receivedDate","date":"receivedDate",
+    "expected sale price":"salePrice","sale price":"salePrice","price":"salePrice",
+    "rfid indoor":"rfidIn","rfid in":"rfidIn",
+    "rfid outdoor":"rfidOut","rfid out":"rfidOut",
+    "warehouse":"warehouse","notes":"notes","remark":"notes",
+  };
+
+  function parseFile(file) {
+    if (!window.XLSX) {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.onload = () => doParseFile(file);
+      document.head.appendChild(s);
+    } else { doParseFile(file); }
+  }
+
+  function doParseFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = window.XLSX.read(e.target.result, {type:"array", cellDates:true});
+        const wsName = wb.SheetNames.find(n=>n.toLowerCase().includes("stock")||n.toLowerCase().includes("import"))||wb.SheetNames[0];
+        const raw = window.XLSX.utils.sheet_to_json(wb.Sheets[wsName], {defval:"", raw:false});
+        if (!raw.length) { alert("Sheet is empty. Use the template."); return; }
+
+        const maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace("AC-",""))||0),0);
+        const parsed = raw.filter(r=>Object.values(r).some(v=>String(v).trim())).map((r,i)=>{
+          const row = {_idx:i};
+          Object.keys(r).forEach(k=>{ const mapped=FIELD_MAP[k.toLowerCase().trim()]; if(mapped) row[mapped]=String(r[k]||"").trim(); });
+          row.id = "AC-"+String(maxNum+i+1).padStart(3,"0");
+          row.status = "pending_qc"; row.qcAttempts = 0;
+          if(!row.receivedDate||row.receivedDate==="") row.receivedDate = today();
+          if(row.salePrice) row.salePrice = Number(String(row.salePrice).replace(/[^0-9.]/g,""))||0;
+          if(!row.warehouse) row.warehouse = warehouses[0]?.id||"";
+          return row;
+        });
+
+        const errs = {};
+        parsed.forEach((r,i)=>{
+          const e=[];
+          if(!r.lot) e.push("Lot required");
+          else if(lotNums.length>0&&!lotNums.includes(r.lot)) e.push(`Lot "${r.lot}" not in Master`);
+          if(!r.brand) e.push("Brand required");
+          else if(brandNams.length>0&&!brandNams.includes(r.brand)) e.push(`Brand "${r.brand}" not in Master`);
+          if(!r.tonnage) e.push("Tonnage required");
+          if(!r.salePrice||r.salePrice<=0) e.push("Sale price required");
+          if(e.length) errs[i]=e;
+        });
+
+        setRows(parsed); setErrors(errs); setStep(1);
+      } catch(ex){ alert("Could not read file. Please use .xlsx format."); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  const onDrop = e => { e.preventDefault(); setDrag(false); const f=e.dataTransfer.files[0]; if(f)parseFile(f); };
+
+  const saveEdit = () => {
+    const r = {...editRow};
+    const e=[];
+    if(!r.lot) e.push("Lot required");
+    if(!r.brand) e.push("Brand required");
+    if(!r.salePrice||r.salePrice<=0) e.push("Sale price required");
+    setRows(p=>p.map((x,i)=>i===editIdx?r:x));
+    if(e.length) setErrors(p=>({...p,[editIdx]:e}));
+    else { setErrors(p=>{ const n={...p}; delete n[editIdx]; return n; }); }
+    setEditIdx(null); setEditRow(null);
+  };
+
+  const doImport = () => { onBulkAdd(rows); setStep(2); };
+  const errCount = Object.keys(errors).length;
+
+  return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="mo" style={{maxWidth:900,maxHeight:"93vh",overflowY:"auto"}}>
+      {/* STEP INDICATOR */}
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:18}}>
+        {[["1","Upload"],["2","Preview"],["3","Done"]].map(([n,lb],i)=><>
+          <div key={n} style={{display:"flex",alignItems:"center",gap:5}}>
+            <div style={{width:22,height:22,borderRadius:"50%",background:step>=i?"linear-gradient(135deg,var(--ac),var(--ac2))":"rgba(255,255,255,.05)",color:step>=i?"#fff":"var(--mu)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>{n}</div>
+            <span style={{fontSize:11.5,fontWeight:600,color:step>=i?"var(--tx)":"var(--mu)"}}>{lb}</span>
+          </div>
+          {i<2&&<div style={{width:20,height:1,background:"var(--b1)"}}/>}
+        </>)}
+      </div>
+
+      {/* STEP 0 — DROP */}
+      {step===0&&<>
+        <div className="mti">📊 Bulk Upload Stock via Excel</div>
+        <div className="msu">Upload a .xlsx file to register multiple AC units at once</div>
+        <div style={{border:"2px dashed rgba(56,189,248,.25)",borderRadius:10,padding:32,textAlign:"center",cursor:"pointer",background:drag?"rgba(56,189,248,.05)":"rgba(56,189,248,.02)",transition:"all .2s"}}
+          onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
+          onDrop={onDrop} onClick={()=>fileRef.current?.click()}>
+          <div style={{fontSize:32,marginBottom:10}}>📂</div>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:5}}>Drop your Excel file here</div>
+          <div style={{fontSize:12,color:"var(--mu2)"}}>or click to browse · .xlsx files only</div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{ const f=e.target.files[0]; if(f)parseFile(f); }}/>
+        </div>
+        <div className="al al-b" style={{marginTop:12,marginBottom:0}}>
+          💡 <div>Columns needed: <strong>Lot Number, Brand, Tonnage, Sale Price</strong> (required) + Model, Supplier, Received Date, RFID Indoor, RFID Outdoor, Warehouse, Notes (optional)</div>
+        </div>
+      </>}
+
+      {/* STEP 1 — PREVIEW */}
+      {step===1&&<>
+        <div className="mti">Preview — {rows.length} rows found</div>
+        <div className="msu">{errCount>0?<span style={{color:"var(--rd)"}}>⚠️ {errCount} row(s) have errors — fix before importing</span>:<span style={{color:"var(--gr)"}}>✅ All rows valid</span>}</div>
+        <div style={{overflowX:"auto",maxHeight:340,border:"1px solid var(--b1)",borderRadius:8,marginBottom:14}}>
+          <table style={{minWidth:700}}>
+            <thead><tr style={{position:"sticky",top:0,background:"var(--s2)"}}>
+              <th>#</th><th>ID</th><th>Lot</th><th>Brand</th><th>Tonnage</th><th>Price</th><th>RFID In</th><th>RFID Out</th><th>Status</th><th>Edit</th>
+            </tr></thead>
+            <tbody>{rows.map((r,i)=><tr key={i} style={{background:errors[i]?"rgba(248,113,113,.05)":""}}>
+              <td style={{color:"var(--mu)",fontSize:10.5}}>{i+1}</td>
+              <td><span className="uid">{r.id}</span></td>
+              <td><span className="lot">{r.lot||<span style={{color:"var(--rd)"}}>—</span>}</span></td>
+              <td style={{fontWeight:600}}>{r.brand||<span style={{color:"var(--rd)"}}>—</span>}</td>
+              <td>{r.tonnage||"—"}</td>
+              <td className="price">{r.salePrice?fmt(r.salePrice):<span style={{color:"var(--rd)"}}>—</span>}</td>
+              <td><span className="rtag">{r.rfidIn||<span style={{color:"var(--mu)"}}>—</span>}</span></td>
+              <td><span className="rtag">{r.rfidOut||<span style={{color:"var(--mu)"}}>—</span>}</span></td>
+              <td>{errors[i]?<span style={{color:"var(--rd)",fontSize:10}}>❌ {errors[i][0]}</span>:<span style={{color:"var(--gr)",fontSize:10}}>✅ OK</span>}</td>
+              <td><button className="btn bb bsm" onClick={()=>{setEditIdx(i);setEditRow({...r});}}>Edit</button></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div className="mac">
+          <button className="btn bgh" onClick={()=>setStep(0)}>← Back</button>
+          <button className="btn bp" onClick={doImport} disabled={errCount>0}>{errCount>0?`Fix ${errCount} error(s)`:`Import ${rows.length} Units →`}</button>
+        </div>
+      </>}
+
+      {/* STEP 2 — DONE */}
+      {step===2&&<div style={{textAlign:"center",padding:"28px 0"}}>
+        <div style={{fontSize:40,marginBottom:10}}>✅</div>
+        <div style={{fontSize:16,fontWeight:900,marginBottom:6}}>{rows.length} Units Imported!</div>
+        <div style={{fontSize:12,color:"var(--mu2)",marginBottom:20}}>All units added to Pending QC queue</div>
+        <button className="btn bp" onClick={onClose}>Done →</button>
+      </div>}
+
+      {/* EDIT ROW MODAL */}
+      {editIdx!==null&&editRow&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setEditIdx(null)}>
+        <div className="mo">
+          <div className="mti">✏️ Edit Row {editIdx+1}</div>
+          <div className="fg2">
+            <div className="fi"><label className="fl">Lot *</label><select className="fs" value={editRow.lot||""} onChange={e=>setEditRow(p=>({...p,lot:e.target.value}))}><option value="">Select</option>{lots.map(l=><option key={l.id}>{l.number}</option>)}</select></div>
+            <div className="fi"><label className="fl">Brand *</label><select className="fs" value={editRow.brand||""} onChange={e=>setEditRow(p=>({...p,brand:e.target.value}))}><option value="">Select</option>{brands.map(b=><option key={b.id}>{b.name}</option>)}</select></div>
+            <div className="fi"><label className="fl">Tonnage *</label><select className="fs" value={editRow.tonnage||""} onChange={e=>setEditRow(p=>({...p,tonnage:e.target.value}))}><option value="">Select</option>{tonnages.map(t=><option key={t.id}>{t.value}</option>)}</select></div>
+            <div className="fi"><label className="fl">Warehouse</label><select className="fs" value={editRow.warehouse||""} onChange={e=>setEditRow(p=>({...p,warehouse:e.target.value}))}><option value="">Select</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+            <div className="fi"><label className="fl">Sale Price ₹ *</label><input type="number" className="fn" value={editRow.salePrice||""} onChange={e=>setEditRow(p=>({...p,salePrice:Number(e.target.value)}))}/></div>
+            <div className="fi"><label className="fl">Received Date</label><input type="date" className="fn" value={editRow.receivedDate||""} onChange={e=>setEditRow(p=>({...p,receivedDate:e.target.value}))}/></div>
+            <div className="fi"><label className="fl">RFID Indoor</label><input className="fn" value={editRow.rfidIn||""} onChange={e=>setEditRow(p=>({...p,rfidIn:e.target.value}))} placeholder="Optional"/></div>
+            <div className="fi"><label className="fl">RFID Outdoor</label><input className="fn" value={editRow.rfidOut||""} onChange={e=>setEditRow(p=>({...p,rfidOut:e.target.value}))} placeholder="Optional"/></div>
+          </div>
+          <div className="mac"><button className="btn bgh" onClick={()=>setEditIdx(null)}>Cancel</button><button className="btn bp" onClick={saveEdit}>Save →</button></div>
+        </div>
+      </div>}
+    </div>
+  </div>;
+}
+
 function Dashboard({ units, tonnages, warehouses, customers, dispatches }) {
   const [view, setView] = useState("overall"); // overall | wh1 | wh2 | brand
 
@@ -530,6 +807,11 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches }) {
   return <div>
     <div className="ph">
       <div><div className="pt">📊 Dashboard</div><div className="ps">{new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
+      <div className="ph-act">
+        <button className="btn bgr" onClick={()=>exportAllToExcel(units,customers,dispatches,warehouses)}>
+          📥 Download Backup Excel
+        </button>
+      </div>
     </div>
 
     {overall.avail<20&&<div className="al al-w">⚠️ <div><strong>Low Stock:</strong> Only {overall.avail} units available.</div></div>}
@@ -590,8 +872,9 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches }) {
 }
 
 // ─── STOCK INTAKE ─────────────────────────────────────────────────────────────
-function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onTransfer, user }) {
+function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkAdd, onTransfer, user }) {
   const [showForm, setShowForm]=useState(false);
+  const [showUpload, setShowUpload]=useState(false);
   const [showTx, setShowTx]=useState(null); // unit to transfer
   const [txWh, setTxWh]=useState("");
   const [form, setForm]=useState({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:""});
@@ -603,7 +886,10 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onTrans
   return <div>
     <div className="ph">
       <div><div className="pt">📦 Stock Intake</div><div className="ps">Register incoming AC units · assign to warehouse</div></div>
-      {user.role==="admin"&&<div className="ph-act"><button className="btn bp" onClick={()=>setShowForm(true)}>+ Add Unit</button></div>}
+      {user.role==="admin"&&<div className="ph-act">
+        <button className="btn bb" onClick={()=>setShowUpload(true)}>📊 Upload Excel</button>
+        <button className="btn bp" onClick={()=>setShowForm(true)}>+ Add Unit</button>
+      </div>}
     </div>
     <div className="sg sg3">
       <div className="sc bl"><div className="sl">Total</div><div className="sv bl">{units.length}</div></div>
@@ -651,6 +937,9 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onTrans
       </div>
       <div className="mac"><button className="btn bgh" onClick={()=>setShowForm(false)}>Cancel</button><button className="btn bp" onClick={submit}>Register →</button></div>
     </div></div>}
+
+    {/* EXCEL IMPORT MODAL */}
+    {showUpload&&<ExcelImportModal lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} units={units} onBulkAdd={rows=>{onBulkAdd(rows);setShowUpload(false);}} onClose={()=>setShowUpload(false)}/>}
 
     {/* TRANSFER MODAL */}
     {showTx&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setShowTx(null)}><div className="mo">
@@ -1630,6 +1919,19 @@ export default function App() {
   }
 
   // ── DB WRITE ACTIONS ───────────────────────────────────────────────────────
+  const bulkAddUnits = async rows => {
+    // Insert all rows one by one to Supabase
+    let maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace("AC-",""))||0),0);
+    let successCount = 0;
+    for (const row of rows) {
+      maxNum++;
+      const newU = {...row, id:"AC-"+String(maxNum).padStart(3,"0"), status:"pending_qc", qcAttempts:0};
+      const {error} = await supabase.from("units").insert(fromUnit(newU));
+      if(!error) successCount++;
+    }
+    showToast(`${successCount} units imported from Excel ✅`);
+  };
+
   const addUnit = async u => {
     const maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace("AC-",""))||0),0);
     const newId = "AC-"+String(maxNum+1).padStart(3,"0");
@@ -1776,7 +2078,7 @@ export default function App() {
 
       <main className={`main ${sbOpen?"exp":"col"}`}>
         {page==="dashboard" && <Dashboard units={units} tonnages={tonnages} warehouses={warehouses} customers={customers} dispatches={dispatches}/>}
-        {page==="intake"    && <StockIntake units={units} lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} onAdd={addUnit} onTransfer={transferUnit} user={user}/>}
+        {page==="intake"    && <StockIntake units={units} lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} onAdd={addUnit} onBulkAdd={bulkAddUnits} onTransfer={transferUnit} user={user}/>}
         {page==="qc"        && <QCModule units={units} warehouses={warehouses} onUpdate={updateUnit} user={user}/>}
         {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
         {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
