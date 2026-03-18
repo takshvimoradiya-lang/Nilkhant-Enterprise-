@@ -10,6 +10,7 @@ const ALL_MODULES = [
   { id:"dispatch",  label:"Dispatch",     icon:"🚚" },
   { id:"customers", label:"Customers",    icon:"👥" },
   { id:"verify",    label:"Stock Verify", icon:"📡" },
+  { id:"invoices",   label:"Invoice Book",  icon:"🧾" },
   { id:"reports",   label:"Reports",      icon:"📈", adminOnly:true },
   { id:"master",    label:"Master",       icon:"⚙️",  adminOnly:true },
 ];
@@ -1615,6 +1616,272 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
   </div>;
 }
 
+
+// ─── INVOICE BOOK ────────────────────────────────────────────────────────────
+function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showToast }) {
+  const [search, setSearch] = useState("");
+  const [filterPay, setFilterPay] = useState("all"); // all | paid | pending
+  const [sortBy, setSortBy] = useState("date_desc");
+  const [selInv, setSelInv] = useState(null); // full invoice view
+  const [payModal, setPayModal] = useState(null);
+
+  const soldUnits = units.filter(u => u.status === "sold" && u.invoiceNo);
+
+  // Enrich with customer + dispatch
+  const invoices = soldUnits.map(u => ({
+    ...u,
+    customer: customers.find(c => c.unitIds?.includes(u.id)),
+    dispatch: dispatches.find(d => d.unitId === u.id),
+    wh: warehouses.find(w => w.id === u.warehouse),
+  }));
+
+  // Filter
+  const filtered = invoices.filter(inv => {
+    const q = search.toLowerCase();
+    const matchSearch = !search ||
+      (inv.invoiceNo||"").toLowerCase().includes(q) ||
+      (inv.soldTo||"").toLowerCase().includes(q) ||
+      (inv.customerPhone||"").toLowerCase().includes(q) ||
+      inv.id.toLowerCase().includes(q) ||
+      (inv.brand||"").toLowerCase().includes(q);
+    const matchPay = filterPay === "all" ||
+      (filterPay === "paid" && inv.paymentReceived) ||
+      (filterPay === "pending" && !inv.paymentReceived);
+    return matchSearch && matchPay;
+  });
+
+  // Sort
+  const sorted = [...filtered].sort((a,b) => {
+    if(sortBy==="date_desc") return (b.soldDate||"").localeCompare(a.soldDate||"");
+    if(sortBy==="date_asc")  return (a.soldDate||"").localeCompare(b.soldDate||"");
+    if(sortBy==="amount_desc") return (b.totalAmount||b.salePrice||0)-(a.totalAmount||a.salePrice||0);
+    if(sortBy==="inv_desc") return (b.invoiceNo||"").localeCompare(a.invoiceNo||"");
+    return 0;
+  });
+
+  const totalRev  = filtered.reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+  const totalPend = filtered.reduce((s,u)=>s+(u.remainingAmount||0),0);
+  const totalColl = filtered.reduce((s,u)=>s+(u.bookingAmount||0)+(u.paymentReceived?(u.remainingAmount||0):0),0);
+
+  const markFullPay = u => {
+    onUpdate(u.id, {paymentReceived:true, remainingAmount:0});
+    showToast(`Full payment confirmed for ${u.invoiceNo} 💰`);
+    setPayModal(null);
+  };
+
+  const dispStage = inv => {
+    if(!inv.dispatch) return {label:"Not Dispatched", color:"var(--mu2)", icon:"📦"};
+    const s = {booked:{label:"Booked",color:"#FBBF24",icon:"📋"},out:{label:"Out for Delivery",color:"#38BDF8",icon:"🚚"},delivered:{label:"Delivered",color:"#34D399",icon:"✅"},paid:{label:"Delivered & Paid",color:"#818CF8",icon:"💜"}};
+    return s[inv.dispatch.stage] || {label:inv.dispatch.stage, color:"var(--mu2)", icon:"📦"};
+  };
+
+  const exportInvoices = () => {
+    const load = cb => { if(!window.XLSX){ const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload=cb; document.head.appendChild(s); } else cb(); };
+    load(()=>{
+      const rows = sorted.map(inv => ({
+        "Invoice No": inv.invoiceNo||"",
+        "Sale Date": inv.soldDate||"",
+        "Unit ID": inv.id,
+        "Brand": inv.brand,
+        "Tonnage": inv.tonnage,
+        "Model": inv.model||"",
+        "Lot": inv.lot||"",
+        "Warehouse": inv.wh?.name||"",
+        "Customer Name": inv.soldTo||"",
+        "Customer Phone": inv.customerPhone||"",
+        "Customer City": inv.customer?.city||"",
+        "Total Amount": inv.totalAmount||inv.salePrice||0,
+        "Booking Paid": inv.bookingAmount||0,
+        "Balance Due": inv.remainingAmount||0,
+        "Payment Status": inv.paymentReceived?"Fully Paid":"Balance Pending",
+        "Delivery Partner": inv.dispatch?.deliveryPartner||"",
+        "Tracking No": inv.dispatch?.trackingNo||"",
+        "Delivery Status": dispStage(inv).label,
+        "Delivered Date": inv.dispatch?.deliveredDate||"",
+        "Sold By": inv.soldBy||"",
+      }));
+      const wb = window.XLSX.utils.book_new();
+      const ws = window.XLSX.utils.json_to_sheet(rows.length?rows:[{Message:"No invoices yet"}]);
+      ws["!cols"] = [{wch:12},{wch:12},{wch:10},{wch:10},{wch:10},{wch:14},{wch:14},{wch:14},{wch:18},{wch:14},{wch:12},{wch:14},{wch:14},{wch:14},{wch:16},{wch:16},{wch:14},{wch:16},{wch:14},{wch:12}];
+      window.XLSX.utils.book_append_sheet(wb, ws, "Invoice Book");
+      window.XLSX.writeFile(wb, `Nilkhant_Invoice_Book_${new Date().toISOString().slice(0,10)}.xlsx`);
+    });
+  };
+
+  return <div>
+    <div className="ph">
+      <div><div className="pt">🧾 Invoice Book</div><div className="ps">All sale invoices — complete payment & delivery tracking</div></div>
+      <div className="ph-act">
+        <button className="btn bgr bsm" onClick={exportInvoices}>📥 Export Excel</button>
+      </div>
+    </div>
+
+    {/* SUMMARY STATS */}
+    <div className="sg sg3" style={{marginBottom:14}}>
+      <div className="sc gy"><div className="sl">Total Invoices</div><div className="sv gy">{filtered.length}</div><div className="sh">of {invoices.length} total</div></div>
+      <div className="sc gr"><div className="sl">Revenue</div><div className="sv gr" style={{fontSize:17}}>{fmt(totalRev)}</div><div className="sh">collected: {fmt(totalColl)}</div></div>
+      <div className="sc am"><div className="sl">Balance Pending</div><div className="sv am" style={{fontSize:17}}>{fmt(totalPend)}</div><div className="sh">{filtered.filter(u=>!u.paymentReceived).length} invoices</div></div>
+    </div>
+
+    {/* FILTERS */}
+    <div className="filt">
+      <div className={`chip ${filterPay==="all"?"on":""}`} onClick={()=>setFilterPay("all")}>All ({invoices.length})</div>
+      <div className={`chip ${filterPay==="paid"?"on":""}`} onClick={()=>setFilterPay("paid")}>✅ Fully Paid ({invoices.filter(u=>u.paymentReceived).length})</div>
+      <div className={`chip ${filterPay==="pending"?"on":""}`} onClick={()=>setFilterPay("pending")}>⏳ Balance Pending ({invoices.filter(u=>!u.paymentReceived).length})</div>
+      <select className="fs" style={{maxWidth:180,padding:"6px 10px",fontSize:12}} value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+        <option value="date_desc">Newest First</option>
+        <option value="date_asc">Oldest First</option>
+        <option value="amount_desc">Highest Amount</option>
+        <option value="inv_desc">Invoice No ↓</option>
+      </select>
+      <input className="srch" placeholder="Search invoice, customer, phone, unit..." value={search} onChange={e=>setSearch(e.target.value)}/>
+    </div>
+
+    {/* INVOICE CARDS */}
+    {sorted.length===0
+      ?<div className="empty"><div className="ei">🧾</div><div className="et">No invoices found</div></div>
+      :sorted.map(inv => {
+        const ds = dispStage(inv);
+        const hasBalance = (inv.remainingAmount||0) > 0;
+        return <div key={inv.id} style={{background:"var(--s1)",border:`1px solid ${hasBalance?"rgba(251,191,36,.25)":"var(--b1)"}`,borderRadius:10,padding:15,marginBottom:10,transition:"border-color .15s"}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor=hasBalance?"rgba(251,191,36,.5)":"rgba(255,255,255,.12)"}
+          onMouseLeave={e=>e.currentTarget.style.borderColor=hasBalance?"rgba(251,191,36,.25)":"var(--b1)"}>
+
+          {/* TOP ROW */}
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{background:"rgba(129,140,248,.1)",border:"1px solid rgba(129,140,248,.2)",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:80}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--ac2)",fontWeight:700}}>{inv.invoiceNo}</div>
+                <div style={{fontSize:9.5,color:"var(--mu)",marginTop:2}}>{inv.soldDate||"—"}</div>
+              </div>
+              <div>
+                <div style={{fontWeight:800,fontSize:14}}>{inv.soldTo||"—"}</div>
+                <div style={{fontSize:11,color:"var(--mu2)",marginTop:2}}>
+                  📞 {inv.customerPhone||"—"}
+                  {inv.customer?.city&&<> · 📍 {inv.customer.city}</>}
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              {/* Payment status */}
+              {inv.paymentReceived
+                ?<span className="badge" style={{background:"rgba(52,211,153,.12)",color:"var(--gr)"}}>✅ Fully Paid</span>
+                :<span className="badge" style={{background:"rgba(251,191,36,.12)",color:"var(--am)"}}>⏳ Balance Pending</span>
+              }
+              {/* Delivery status */}
+              <span className="badge" style={{background:`${ds.color}18`,color:ds.color}}>{ds.icon} {ds.label}</span>
+              {/* Actions */}
+              <button className="btn bb bsm" onClick={()=>setSelInv(inv)}>View</button>
+              {!inv.paymentReceived&&<button className="btn bg2 bsm" onClick={()=>setPayModal(inv)}>💰 Mark Paid</button>}
+            </div>
+          </div>
+
+          {/* PRODUCT ROW */}
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",padding:"10px 12px",background:"rgba(255,255,255,.02)",borderRadius:7,marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:18}}>❄️</span>
+              <div>
+                <div style={{fontSize:12,fontWeight:700}}>{inv.brand} {inv.tonnage}</div>
+                <div style={{fontSize:10.5,color:"var(--mu2)"}}>{inv.model||"AC Unit"} · <span className="uid">{inv.id}</span></div>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,color:"var(--mu2)"}}>
+              <span className="lot">{inv.lot||"—"}</span>
+            </div>
+            {inv.wh&&<div style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,color:"var(--mu2)"}}>
+              <span className="whlabel">🏭 {inv.wh.name}</span>
+            </div>}
+            {inv.soldBy&&<div style={{fontSize:10.5,color:"var(--mu2)"}}>👤 {inv.soldBy}</div>}
+          </div>
+
+          {/* PAYMENT ROW */}
+          <div style={{display:"flex",gap:0,border:"1px solid var(--b1)",borderRadius:8,overflow:"hidden"}}>
+            {[
+              ["Total Amount",   fmt(inv.totalAmount||inv.salePrice),  "var(--ac)"],
+              ["Booking Paid",   fmt(inv.bookingAmount||0),             "var(--gr)"],
+              ["Balance Due",    fmt(inv.remainingAmount||0),           hasBalance?"var(--am)":"var(--gr)"],
+            ].map(([label,val,color],i)=><div key={i} style={{flex:1,padding:"8px 12px",borderRight:i<2?"1px solid var(--b1)":"none",textAlign:"center"}}>
+              <div style={{fontSize:11,fontWeight:700,color}}>{val}</div>
+              <div style={{fontSize:9.5,color:"var(--mu)",marginTop:2}}>{label}</div>
+            </div>)}
+            {inv.dispatch?.deliveredDate&&<div style={{flex:1,padding:"8px 12px",textAlign:"center",borderLeft:"1px solid var(--b1)"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--gr)"}}>✅ {inv.dispatch.deliveredDate}</div>
+              <div style={{fontSize:9.5,color:"var(--mu)",marginTop:2}}>Delivered</div>
+            </div>}
+          </div>
+        </div>;
+      })
+    }
+
+    {/* FULL INVOICE VIEW MODAL */}
+    {selInv&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setSelInv(null)}>
+      <div className="mo" style={{maxWidth:600,maxHeight:"93vh",overflowY:"auto"}}>
+        <div className="inv-sheet">
+          <div className="inv-hd">
+            <div><div className="inv-co">❄️ Nilkhant Enterprise</div><div className="inv-cotag">AC Sales & Service</div></div>
+            <div><div className="inv-no">{selInv.invoiceNo}</div><div className="inv-dt">{selInv.soldDate||today()}</div></div>
+          </div>
+          <div className="inv-parties">
+            <div><div className="inv-plbl">Bill To</div><div className="inv-pname">{selInv.soldTo||"—"}</div>
+              <div className="inv-pdet">
+                {selInv.customerPhone&&<div>📞 {selInv.customerPhone}</div>}
+                {selInv.customer?.altPhone&&<div>📞 Alt: {selInv.customer.altPhone}</div>}
+                {selInv.customer?.email&&<div>✉️ {selInv.customer.email}</div>}
+                {selInv.customer?.gst&&<div>GST: {selInv.customer.gst}</div>}
+                {selInv.customer?.address&&<div>{selInv.customer.address}</div>}
+                {selInv.customer?.city&&<div>{selInv.customer.city} {selInv.customer?.pincode||""}</div>}
+              </div>
+            </div>
+            <div><div className="inv-plbl">Delivery</div>
+              <div className="inv-pdet">
+                <div>Status: <strong>{dispStage(selInv).label}</strong></div>
+                {selInv.dispatch?.deliveryPartner&&<div>Partner: {selInv.dispatch.deliveryPartner}</div>}
+                {selInv.dispatch?.trackingNo&&<div>Tracking: {selInv.dispatch.trackingNo}</div>}
+                {selInv.dispatch?.deliveredDate&&<div>Delivered: {selInv.dispatch.deliveredDate}</div>}
+              </div>
+            </div>
+          </div>
+          <table className="inv-tbl">
+            <thead><tr><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
+            <tbody><tr>
+              <td><strong>{selInv.brand} {selInv.tonnage}</strong><br/><span style={{fontSize:10,color:"#6B7280"}}>{selInv.model||"AC Unit"} · Indoor + Outdoor</span></td>
+              <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.id}</td>
+              <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.lot}</td>
+              <td><strong>{fmt(selInv.totalAmount||selInv.salePrice)}</strong></td>
+            </tr></tbody>
+          </table>
+          <div className="inv-tot">
+            <div className="inv-tot-row"><span>Subtotal</span><span>{fmt(selInv.totalAmount||selInv.salePrice)}</span></div>
+            <div className="inv-tot-final"><span>Total</span><span>{fmt(selInv.totalAmount||selInv.salePrice)}</span></div>
+            {(selInv.bookingAmount||0)>0&&<>
+              <div className="inv-tot-row" style={{marginTop:8,color:"#065F46"}}><span>✅ Booking Collected</span><span>−{fmt(selInv.bookingAmount)}</span></div>
+              <div className="inv-tot-row" style={{color:(selInv.remainingAmount||0)>0?"#92400E":"#065F46",fontWeight:700}}><span>{(selInv.remainingAmount||0)>0?"⏳ Balance Due on Delivery":"✅ Fully Paid"}</span><span>{fmt(selInv.remainingAmount||0)}</span></div>
+            </>}
+          </div>
+          <div className="inv-footer">Thank you for choosing Nilkhant Enterprise!</div>
+        </div>
+        <div className="mac">
+          <button className="btn bgh" onClick={()=>setSelInv(null)}>Close</button>
+          <button className="btn bb" onClick={()=>window.print()}>🖨️ Print</button>
+          <button className="btn bwa" onClick={()=>{ const p=(selInv.customerPhone||"").replace(/\D/g,""); const msg=encodeURIComponent("🧾 Invoice: "+selInv.invoiceNo+"\n❄️ Nilkhant Enterprise\n\nDear "+selInv.soldTo+",\n\nProduct: "+selInv.brand+" "+selInv.tonnage+"\nUnit ID: "+selInv.id+"\nTotal: "+fmt(selInv.totalAmount||selInv.salePrice)+"\nBalance Due: "+fmt(selInv.remainingAmount||0)+"\n\nThank you! 🙏"); window.open("https://wa.me/91"+p+"?text="+msg,"_blank"); }}>💬 WhatsApp</button>
+          {!selInv.paymentReceived&&<button className="btn bg2" onClick={()=>{setPayModal(selInv);setSelInv(null);}}>💰 Mark Paid</button>}
+        </div>
+      </div>
+    </div>}
+
+    {/* PAYMENT CONFIRMATION */}
+    {payModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setPayModal(null)}><div className="mo" style={{maxWidth:400}}>
+      <div className="mti">💰 Confirm Full Payment</div>
+      <div className="msu"><span className="invno">{payModal.invoiceNo}</span> · {payModal.soldTo}</div>
+      <div className="al al-b">Balance due: <strong>{fmt(payModal.remainingAmount||0)}</strong></div>
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setPayModal(null)}>Cancel</button>
+        <button className="btn bg2" onClick={()=>markFullPay(payModal)}>✅ Confirm Full Payment Received</button>
+      </div>
+    </div></div>}
+  </div>;
+}
+
 // ─── CUSTOMERS ─────────────────────────────────────────────────────────────────
 function Customers({ customers, units, dispatches }) {
   const [search,setSearch]=useState(""); const [det,setDet]=useState(null);
@@ -2393,7 +2660,7 @@ export default function App() {
 
         <nav className="sb-nav">
           <div className="sb-sec">Navigation</div>
-          {ALL_MODULES.filter(m=>userMods.includes(m.id)).map(m=>(
+          {ALL_MODULES.filter(m=>userMods.includes(m.id)||(m.adminOnly&&user?.role==="admin")).map(m=>(
             <button key={m.id} className={`nb ${page===m.id?"on":""}`} onClick={()=>setPage(m.id)} title={m.label}>
               <div className="ni">{m.icon}</div>
               <span className="nb-lbl">{m.label}</span>
@@ -2417,9 +2684,10 @@ export default function App() {
         {page==="qc"        && <QCModule units={units} warehouses={warehouses} onUpdate={updateUnit} user={user}/>}
         {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
         {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
+        {page==="invoices"   && <InvoiceBook units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} showToast={showToast}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
         {page==="verify"    && <StockVerify units={units} warehouses={warehouses} user={user} onVerificationComplete={onVerif} openCamera={openCamera}/>}
-        {page==="reports"   && <Reports units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} lots={lots}/> }
+        {page==="reports"   && <Reports units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} lots={lots}/>}
         {page==="master"    && <MasterPage lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} users={users} invoiceTemplate={invoiceTemplate} onLotsChange={setLotsDB} onBrandsChange={setBrandsDB} onTonnagesChange={setTonnagesDB} onWHChange={setWHDB} onUsersChange={setUsersDB} onInvoiceTemplateChange={handleInvoiceTemplateChange} showToast={showToast}/>}
       </main>
 
