@@ -919,12 +919,42 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
       }
     </div>
 
-    {/* TODAY SUMMARY — visible to all */}
-    <div className="sg sg3" style={{marginBottom:14}}>
-      <div className="sc am"><div className="sl">Today Sold</div><div className="sv am">{todaySold.length}</div></div>
-      <div className="sc gr"><div className="sl">Today Revenue</div><div className="sv gr" style={{fontSize:18}}>{fmt(todayRev)}</div></div>
+    {/* TODAY + TOTAL REVENUE SUMMARY */}
+    <div className="sg sg4" style={{marginBottom:14}}>
+      <div className="sc am"><div className="sl">Today Sold</div><div className="sv am">{todaySold.length}</div><div className="sh">{new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div></div>
+      <div className="sc gr"><div className="sl">Today Revenue</div><div className="sv gr" style={{fontSize:16}}>{fmt(todayRev)}</div><div className="sh">collected today</div></div>
+      <div className="sc in"><div className="sl">Total Revenue</div><div className="sv in" style={{fontSize:16}}>{fmt(overall.rev)}</div><div className="sh">all time</div></div>
       <div className="sc rd"><div className="sl">Under Repair</div><div className="sv rd">{overall.rep}</div></div>
     </div>
+
+    {/* WAREHOUSE REVENUE CARDS */}
+    {warehouses.length>0&&<div className="sg" style={{gridTemplateColumns:`repeat(${Math.min(warehouses.length,4)},1fr)`,marginBottom:14}}>
+      {warehouses.map((wh,i)=>{
+        const wu=units.filter(u=>u.warehouse===wh.id);
+        const whTodayRev=wu.filter(u=>u.status==="sold"&&u.soldDate===tdStr()).reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+        const whTotalRev=wu.filter(u=>u.status==="sold").reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+        const whAvail=wu.filter(u=>u.status==="available").length;
+        const whAvailVal=wu.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0);
+        const whColors=["var(--ac)","var(--ac2)","var(--gr)","var(--am)"];
+        return <div key={wh.id} className="sc bl" style={{["--ac"]:whColors[i%whColors.length]}}>
+          <div className="sl">🏭 {wh.name}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:4}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+              <span style={{fontSize:10,color:"var(--mu2)"}}>Today Rev</span>
+              <span style={{fontSize:14,fontWeight:800,color:"var(--gr)"}}>{fmt(whTodayRev)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+              <span style={{fontSize:10,color:"var(--mu2)"}}>Total Rev</span>
+              <span style={{fontSize:13,fontWeight:700,color:"var(--ac)"}}>{fmt(whTotalRev)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+              <span style={{fontSize:10,color:"var(--mu2)"}}>Available</span>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--gr)"}}>{whAvail} units · {fmt(whAvailVal)}</span>
+            </div>
+          </div>
+        </div>;
+      })}
+    </div>}
 
     {/* PIPELINE */}
     <div className="card"><div className="chd"><div className="ct">Pipeline Flow</div></div>
@@ -1332,10 +1362,17 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   const [sf,setSf]=useState({name:"",phone:"",altPhone:"",email:"",address:"",city:"",pincode:"",gst:"",soldDate:today(),bookingAmt:"",totalAmt:""});
   const [df,setDf]=useState({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
 
+  const [showCompleted, setShowCompleted] = useState(false);
   const avail=units.filter(u=>u.status==="available");
-  const sold=units.filter(u=>u.status==="sold");
+  // "completed" = sold + payment received + delivered
+  const isCompleted = u => u.status==="sold" && u.paymentReceived===true && dispatches.find(d=>d.unitId===u.id&&(d.stage==="delivered"||d.stage==="paid"));
+  const sold = units.filter(u=>u.status==="sold");
+  const activeSold = sold.filter(u=>!isCompleted(u));  // needs action
+  const completedSold = sold.filter(u=>isCompleted(u)); // done, hide by default
   const matchS=u=>{ if(!search)return true; const q=search.toLowerCase(); return u.id.toLowerCase().includes(q)||u.brand.toLowerCase().includes(q)||(u.lot||"").toLowerCase().includes(q)||(u.soldTo||"").toLowerCase().includes(q)||(u.rfidIn||"").toLowerCase().includes(q)||(u.rfidOut||"").toLowerCase().includes(q)||(u.invoiceNo||"").toLowerCase().includes(q); };
-  const rows=units.filter(u=>u.status===tab&&matchS(u));
+  // For sold tab: show active by default, completed only when toggled
+  const soldRows = (showCompleted ? sold : activeSold).filter(matchS);
+  const rows = tab==="sold" ? soldRows : units.filter(u=>u.status===tab&&matchS(u));
 
   const doSell=()=>{
     if(!sf.name||!sf.phone)return;
@@ -1395,10 +1432,13 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     </div>
     <div className="filt">
       <div className={`chip ${tab==="available"?"on":""}`} onClick={()=>setTab("available")}>✅ Available ({avail.length})</div>
-      <div className={`chip ${tab==="sold"?"on":""}`} onClick={()=>setTab("sold")}>💰 Sold ({sold.length})</div>
+      <div className={`chip ${tab==="sold"?"on":""}`} onClick={()=>setTab("sold")}>💰 Active Sales ({activeSold.length})</div>
+      {completedSold.length>0&&<div className={`chip ${tab==="sold"&&showCompleted?"on":""}`} style={{background:"rgba(148,163,184,.08)",borderColor:"rgba(148,163,184,.2)",color:"var(--gy)"}} onClick={()=>{setTab("sold");setShowCompleted(p=>!p);}}>
+        {showCompleted?"▲ Hide":"▼ Show"} Completed ({completedSold.length})
+      </div>}
       <input className="srch" placeholder="Search ID, RFID, brand, lot, invoice, customer..." value={search} onChange={e=>setSearch(e.target.value)}/>
     </div>
-    <div className="card"><div className="chd"><div className="ct">{tab==="available"?"✅ Available":"💰 Sold"} ({rows.length})</div></div>
+    <div className="card"><div className="chd"><div className="ct">{tab==="available"?"✅ Available":showCompleted?"💰 All Sold (incl. completed)":"💰 Active Sales (pending action)"} ({rows.length})</div></div>
       {rows.length===0?<div className="empty"><div className="ei">📭</div><div className="et">No units found</div></div>:(
         <div className="tw"><table>
           <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th><th>Price</th>
@@ -1566,13 +1606,26 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
 
 function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, showToast }) {
   const [sf,setSf]=useState("all"); const [search,setSearch]=useState(""); const [det,setDet]=useState(null); const [sm,setSm]=useState(null);
+  const [showDone, setShowDone] = useState(false);
   const enriched=dispatches.map(d=>({...d,unit:units.find(u=>u.id===d.unitId),customer:customers.find(c=>c.id===d.customerId)}));
-  const filtered=enriched.filter(d=>{ const ms=sf==="all"||d.stage===sf; const q=search.toLowerCase(); return ms&&(!search||d.unitId.toLowerCase().includes(q)||(d.invoiceNo||"").toLowerCase().includes(q)||(d.customer?.name||"").toLowerCase().includes(q)||(d.trackingNo||"").toLowerCase().includes(q)); });
+  // "done" = delivered AND payment received on the unit
+  const isDone = d => (d.stage==="delivered"||d.stage==="paid") && units.find(u=>u.id===d.unitId)?.paymentReceived===true;
+  const activeDispatches = enriched.filter(d=>!isDone(d));
+  const doneDispatches   = enriched.filter(d=>isDone(d));
+  const baseSet = showDone ? enriched : activeDispatches;
+  const filtered=baseSet.filter(d=>{ const ms=sf==="all"||d.stage===sf; const q=search.toLowerCase(); return ms&&(!search||d.unitId.toLowerCase().includes(q)||(d.invoiceNo||"").toLowerCase().includes(q)||(d.customer?.name||"").toLowerCase().includes(q)||(d.trackingNo||"").toLowerCase().includes(q)); });
   const adv=(d,ns)=>{ const u={stage:ns}; if(ns==="delivered")u.deliveredDate=today(); if(ns==="paid")u.paymentReceivedDate=today(); onUpdateDispatch(d.id,u); showToast(`${d.unitId} → ${DISPATCH_STAGES.find(s=>s.id===ns)?.label} 🚚`); setSm(null); };
   const si=id=>DISPATCH_STAGES.findIndex(s=>s.id===id);
   const counts={}; DISPATCH_STAGES.forEach(s=>counts[s.id]=dispatches.filter(d=>d.stage===s.id).length);
   return <div>
-    <div className="ph"><div><div className="pt">🚚 Dispatch</div><div className="ps">Track deliveries end-to-end</div></div></div>
+    <div className="ph">
+      <div><div className="pt">🚚 Dispatch</div><div className="ps">Track deliveries — active only · completed hidden</div></div>
+      <div className="ph-act">
+        {doneDispatches.length>0&&<button className="btn bgh bsm" onClick={()=>setShowDone(p=>!p)}>
+          {showDone?"▲ Hide Completed":"▼ Show Completed"} ({doneDispatches.length})
+        </button>}
+      </div>
+    </div>
     <div className="sg sg4">{DISPATCH_STAGES.map(s=><div key={s.id} className="sc bl"><div className="sl">{s.icon} {s.label}</div><div className="sv" style={{color:s.color}}>{counts[s.id]||0}</div></div>)}</div>
     <div className="filt">
       <div className={`chip ${sf==="all"?"on":""}`} onClick={()=>setSf("all")}>All ({dispatches.length})</div>
@@ -2166,17 +2219,60 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
     {/* PAYMENT REPORT */}
     {rpt==="payment"&&<div>
       {dateFilter}
-      <div className="sg sg3" style={{marginBottom:14}}>
+      {/* KPIs */}
+      <div className="sg sg4" style={{marginBottom:14}}>
         <KPI label="Total Invoiced" value={fmt(totalRev)} color="var(--ac)"/>
         <KPI label="Collected" value={fmt(collected)} color="var(--gr)"/>
         <KPI label="Pending Balance" value={fmt(pending)} color="var(--am)"/>
+        <KPI label="Pending Count" value={soldUnits.filter(u=>!u.paymentReceived).length+" units"} color="var(--am)"/>
       </div>
-      <div className="card"><div className="chd"><div className="ct">Pending Payments</div></div>
+
+      {/* WAREHOUSE-WISE PENDING */}
+      <div className="card"><div className="chd"><div><div className="ct">🏭 Pending by Warehouse</div></div></div>
+        {warehouses.map(wh=>{ const wu=soldUnits.filter(u=>u.warehouse===wh.id&&(u.remainingAmount||0)>0); const wpend=wu.reduce((s,u)=>s+(u.remainingAmount||0),0); if(!wu.length)return null;
+          return <div key={wh.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
+            <div style={{fontWeight:700,fontSize:13}}>🏭 {wh.name}</div>
+            <div style={{display:"flex",gap:14,fontSize:11}}>
+              <span style={{color:"var(--mu2)"}}>{wu.length} units pending</span>
+              <span style={{color:"var(--am)",fontWeight:700}}>Balance: {fmt(wpend)}</span>
+            </div>
+          </div>;
+        })}
+        {soldUnits.filter(u=>(u.remainingAmount||0)>0).length===0&&<div className="empty"><div className="et">No pending balances</div></div>}
+      </div>
+
+      {/* BRAND-WISE PENDING */}
+      <div className="card"><div className="chd"><div><div className="ct">🏷️ Pending by Brand</div></div></div>
+        {[...new Set(soldUnits.filter(u=>(u.remainingAmount||0)>0).map(u=>u.brand))].map(brand=>{ const bu=soldUnits.filter(u=>u.brand===brand&&(u.remainingAmount||0)>0); const bpend=bu.reduce((s,u)=>s+(u.remainingAmount||0),0); const maxPend=soldUnits.filter(u=>(u.remainingAmount||0)>0).reduce((s,u)=>s+(u.remainingAmount||0),0);
+          return <div key={brand} className="rpt-bar-wrap"><span style={{minWidth:90,fontSize:12,fontWeight:600}}>{brand}</span><div className="rpt-bar-bg"><div className="rpt-bar-fill" style={{width:maxPend>0?`${Math.round(bpend/maxPend*100)}%`:"0%",background:"var(--am)"}}/></div><span style={{fontSize:11,color:"var(--mu2)",minWidth:130,textAlign:"right"}}>{bu.length} units · <span style={{color:"var(--am)",fontWeight:700}}>{fmt(bpend)}</span></span></div>;
+        })}
+        {soldUnits.filter(u=>(u.remainingAmount||0)>0).length===0&&<div className="empty"><div className="et">No pending balances</div></div>}
+      </div>
+
+      {/* TONNAGE-WISE PENDING */}
+      <div className="card"><div className="chd"><div><div className="ct">📐 Pending by Tonnage</div></div></div>
+        {[...new Set(soldUnits.filter(u=>(u.remainingAmount||0)>0).map(u=>u.tonnage))].sort().map(ton=>{ const tu=soldUnits.filter(u=>u.tonnage===ton&&(u.remainingAmount||0)>0); const tpend=tu.reduce((s,u)=>s+(u.remainingAmount||0),0);
+          return <div key={ton} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
+            <span style={{fontWeight:700,fontSize:12}}>{ton}</span>
+            <div style={{display:"flex",gap:14,fontSize:11}}>
+              <span style={{color:"var(--mu2)"}}>{tu.length} units</span>
+              <span style={{color:"var(--am)",fontWeight:700}}>{fmt(tpend)}</span>
+            </div>
+          </div>;
+        })}
+        {soldUnits.filter(u=>(u.remainingAmount||0)>0).length===0&&<div className="empty"><div className="et">No pending balances</div></div>}
+      </div>
+
+      {/* DETAIL TABLE */}
+      <div className="card"><div className="chd"><div><div className="ct">All Payment Details</div></div></div>
         {soldUnits.filter(u=>(u.remainingAmount||0)>0).length===0?<div className="empty"><div className="et">No pending payments in this period 🎉</div></div>:<div className="tw"><table>
-          <thead><tr><th>Invoice</th><th>Customer</th><th>Phone</th><th>Total</th><th>Collected</th><th>Balance Due</th><th>Sold Date</th></tr></thead>
-          <tbody>{soldUnits.filter(u=>(u.remainingAmount||0)>0).map(u=><tr key={u.id}>
+          <thead><tr><th>Invoice</th><th>Unit</th><th>Brand/Ton</th><th>Customer</th><th>Phone</th><th>Total</th><th>Collected</th><th>Balance Due</th><th>Sold Date</th></tr></thead>
+          <tbody>{soldUnits.filter(u=>(u.remainingAmount||0)>0).sort((a,b)=>(b.remainingAmount||0)-(a.remainingAmount||0)).map(u=><tr key={u.id}>
             <td><span className="invno">{u.invoiceNo||"—"}</span></td>
-            <td style={{fontWeight:600}}>{u.soldTo||"—"}</td><td style={{fontSize:11}}>{u.customerPhone||"—"}</td>
+            <td><span className="uid">{u.id}</span></td>
+            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
+            <td style={{fontWeight:600}}>{u.soldTo||"—"}</td>
+            <td style={{fontSize:11}}>{u.customerPhone||"—"}</td>
             <td className="price">{fmt(u.totalAmount||u.salePrice)}</td>
             <td style={{color:"var(--gr)",fontWeight:600}}>{fmt(u.bookingAmount||0)}</td>
             <td style={{color:"var(--am)",fontWeight:700}}>{fmt(u.remainingAmount||0)}</td>
@@ -2205,17 +2301,61 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
 
     {/* WAREHOUSE REPORT */}
     {rpt==="warehouse"&&<div>
-      <div style={{marginBottom:16,fontSize:12,color:"var(--mu2)"}}>Live snapshot — all time data across all warehouses</div>
+      {dateFilter}
       {warehouses.map((wh,i)=>{
-        const wu=units.filter(u=>u.warehouse===wh.id);
-        const avail=wu.filter(u=>u.status==="available"); const sold=wu.filter(u=>u.status==="sold");
-        return <div key={wh.id} className="card" style={{marginBottom:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:14,fontWeight:800}}>🏭 {wh.name}</div>
-            <div style={{fontSize:11,color:"var(--mu2)"}}>{wh.location}</div>
+        const wu = units.filter(u=>u.warehouse===wh.id);
+        const whSold = wu.filter(u=>u.status==="sold");
+        const whAvail = wu.filter(u=>u.status==="available");
+        const todayStr = today();
+        const whTodayRev   = whSold.filter(u=>u.soldDate===todayStr).reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+        const whPeriodRev  = whSold.filter(u=>inRange(u)).reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+        const whTotalRev   = whSold.reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
+        const whPending    = whSold.filter(u=>(u.remainingAmount||0)>0).reduce((s,u)=>s+(u.remainingAmount||0),0);
+        const whStockVal   = whAvail.reduce((s,u)=>s+(u.salePrice||0),0);
+        const whPendCount  = whSold.filter(u=>(u.remainingAmount||0)>0).length;
+        const accentCols   = ["var(--ac)","var(--ac2)","var(--gr)","var(--am)"];
+        const ac = accentCols[i%accentCols.length];
+        return <div key={wh.id} className="card" style={{marginBottom:14,borderTop:`3px solid ${ac}`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:800}}>🏭 {wh.name}</div>
+              {wh.location&&<div style={{fontSize:11,color:"var(--mu2)",marginTop:2}}>📍 {wh.location}</div>}
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <span style={{background:"rgba(52,211,153,.1)",color:"var(--gr)",border:"1px solid rgba(52,211,153,.2)",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700}}>{whAvail.length} available</span>
+              <span style={{background:"rgba(148,163,184,.08)",color:"var(--gy)",border:"1px solid rgba(148,163,184,.2)",borderRadius:6,padding:"3px 10px",fontSize:11}}>{whSold.length} sold</span>
+            </div>
           </div>
-          <div className="sg sg4" style={{marginBottom:0}}>
-            {[["Total",wu.length,"var(--ac)"],["Available",avail.length,"var(--gr)"],["Sold",sold.length,"var(--gy)"],["Stock Value",fmt(avail.reduce((s,u)=>s+(u.salePrice||0),0)),"var(--ac2)"]].map(([l,v,c])=><div key={l} style={{background:"var(--bg)",borderRadius:7,padding:"9px 11px",textAlign:"center"}}><div style={{fontSize:11,color:c,fontWeight:900,fontSize:20}}>{v}</div><div style={{fontSize:9.5,color:"var(--mu2)",marginTop:2}}>{l}</div></div>)}
+
+          {/* REVENUE CARDS */}
+          <div className="sg sg4" style={{marginBottom:12}}>
+            {[
+              ["Today Revenue",    fmt(whTodayRev),  "var(--gr)",  "gr"],
+              ["Period Revenue",   fmt(whPeriodRev), "var(--ac)",  "bl"],
+              ["Total Revenue",    fmt(whTotalRev),  "var(--ac2)", "in"],
+              ["Pending Balance",  fmt(whPending),   "var(--am)",  "am"],
+            ].map(([label,val,color,cls])=>
+              <div key={label} className={`sc ${cls}`}>
+                <div className="sl">{label}</div>
+                <div className="sv" style={{color,fontSize:15}}>{val}</div>
+                {label==="Pending Balance"&&whPendCount>0&&<div className="sh">{whPendCount} unit{whPendCount>1?"s":""} pending</div>}
+                {label==="Today Revenue"&&<div className="sh">{todayStr}</div>}
+              </div>
+            )}
+          </div>
+
+          {/* STOCK STATS */}
+          <div style={{display:"flex",gap:0,border:"1px solid var(--b1)",borderRadius:8,overflow:"hidden"}}>
+            {[
+              ["Total Units",   wu.length,                                         "var(--ac)"],
+              ["Pending QC",    wu.filter(u=>u.status==="pending_qc").length,      "var(--am)"],
+              ["Available",     whAvail.length,                                    "var(--gr)"],
+              ["Under Repair",  wu.filter(u=>u.status==="under_repair").length,    "var(--rd)"],
+              ["Stock Value",   fmt(whStockVal),                                   "var(--ac2)"],
+            ].map(([l,v,c],j)=><div key={l} style={{flex:1,padding:"8px 6px",borderRight:j<4?"1px solid var(--b1)":"none",textAlign:"center"}}>
+              <div style={{fontSize:13,fontWeight:700,color:c}}>{v}</div>
+              <div style={{fontSize:9,color:"var(--mu)",marginTop:2,lineHeight:1.3}}>{l}</div>
+            </div>)}
           </div>
         </div>;
       })}
