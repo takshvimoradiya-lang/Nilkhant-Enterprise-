@@ -908,23 +908,20 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
       </table>
     </div>}
 
-    {/* STATS — admin: all-time sold, others: today sold */}
+    {/* STATS — role-based visibility */}
     <div className="sg sg4">
-      <div className="sc bl"><div className="sl">Total Units</div><div className="sv bl">{overall.total}</div></div>
+      {user?.role==="admin"&&<div className="sc bl"><div className="sl">Total Units</div><div className="sv bl">{overall.total}</div></div>}
       <div className="sc am"><div className="sl">Pending QC</div><div className="sv am">{overall.pend}</div></div>
-      <div className="sc gr"><div className="sl">Available</div><div className="sv gr">{overall.avail}</div><div className="sh">{fmt(overall.val)}</div></div>
-      {user?.role==="admin"
-        ?<div className="sc gy"><div className="sl">All-time Sold</div><div className="sv gy">{overall.sold}</div><div className="sh">{fmt(overall.rev)} revenue</div></div>
-        :<div className="sc gy"><div className="sl">Today Sold</div><div className="sv gy">{todaySold.length}</div><div className="sh">{fmt(todayRev)} today</div></div>
-      }
+      <div className="sc gr"><div className="sl">Available</div><div className="sv gr">{overall.avail}</div></div>
+      <div className="sc rd"><div className="sl">Under Repair</div><div className="sv rd">{overall.rep}</div></div>
     </div>
 
-    {/* TODAY + TOTAL REVENUE SUMMARY */}
-    <div className="sg sg4" style={{marginBottom:14}}>
+    {/* TODAY SUMMARY — one row, no duplicate */}
+    <div className="sg sg3" style={{marginBottom:14}}>
       <div className="sc am"><div className="sl">Today Sold</div><div className="sv am">{todaySold.length}</div><div className="sh">{new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div></div>
       <div className="sc gr"><div className="sl">Today Revenue</div><div className="sv gr" style={{fontSize:16}}>{fmt(todayRev)}</div><div className="sh">collected today</div></div>
-      <div className="sc in"><div className="sl">Total Revenue</div><div className="sv in" style={{fontSize:16}}>{fmt(overall.rev)}</div><div className="sh">all time</div></div>
-      <div className="sc rd"><div className="sl">Under Repair</div><div className="sv rd">{overall.rep}</div></div>
+      {user?.role==="admin"&&<div className="sc in"><div className="sl">Total Revenue</div><div className="sv in" style={{fontSize:16}}>{fmt(overall.rev)}</div><div className="sh">all time</div></div>}
+      {user?.role!=="admin"&&<div className="sc gy"><div className="sl">All Sold</div><div className="sv gy">{overall.sold}</div></div>}
     </div>
 
     {/* WAREHOUSE REVENUE CARDS */}
@@ -943,13 +940,13 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
               <span style={{fontSize:10,color:"var(--mu2)"}}>Today Rev</span>
               <span style={{fontSize:14,fontWeight:800,color:"var(--gr)"}}>{fmt(whTodayRev)}</span>
             </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+            {user?.role==="admin"&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
               <span style={{fontSize:10,color:"var(--mu2)"}}>Total Rev</span>
               <span style={{fontSize:13,fontWeight:700,color:"var(--ac)"}}>{fmt(whTotalRev)}</span>
-            </div>
+            </div>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
               <span style={{fontSize:10,color:"var(--mu2)"}}>Available</span>
-              <span style={{fontSize:12,fontWeight:600,color:"var(--gr)"}}>{whAvail} units · {fmt(whAvailVal)}</span>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--gr)"}}>{whAvail} units{user?.role==="admin"?" · "+fmt(whAvailVal):""}</span>
             </div>
           </div>
         </div>;
@@ -1080,6 +1077,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
   const [adminNote, setAdminNote] = useState("");
   const [showMissing, setShowMissing] = useState(true);
   const [showVerified, setShowVerified] = useState(true);
+  const [scanFeedback, setScanFeedback] = useState(null); // {tag, status, unitId, brand}
   const inputRef = useRef();
 
   // Active (non-sold) units, filtered by warehouse
@@ -1111,6 +1109,27 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
     setInputVal("");
     setScannedRfids(prev=>new Set([...prev, tag]));
     inputRef.current?.focus();
+    // Show scan feedback
+    const matchedUnit = rfidMap[tag];
+    if(matchedUnit) {
+      const alreadyHasIn  = matchedUnit.rfidIn  && scannedRfids.has(matchedUnit.rfidIn.toUpperCase());
+      const alreadyHasOut = matchedUnit.rfidOut && scannedRfids.has(matchedUnit.rfidOut.toUpperCase());
+      const thisIsIn  = (matchedUnit.rfidIn||"").toUpperCase()===tag;
+      const thisIsOut = (matchedUnit.rfidOut||"").toUpperCase()===tag;
+      const willBeBoth = (thisIsIn&&(alreadyHasOut||(matchedUnit.rfidOut&&scannedRfids.has(matchedUnit.rfidOut.toUpperCase())||!matchedUnit.rfidOut))) ||
+                         (thisIsOut&&(alreadyHasIn||(matchedUnit.rfidIn&&scannedRfids.has(matchedUnit.rfidIn.toUpperCase())||!matchedUnit.rfidIn)));
+      setScanFeedback({
+        tag,
+        status: willBeBoth ? "verified" : "partial",
+        unitId: matchedUnit.id,
+        brand: matchedUnit.brand,
+        tonnage: matchedUnit.tonnage,
+        tagType: thisIsIn?"Indoor":"Outdoor",
+      });
+    } else {
+      setScanFeedback({ tag, status:"unknown" });
+    }
+    setTimeout(()=>setScanFeedback(null), 2500);
   };
 
   const clearAll = () => { setScannedRfids(new Set()); setInputVal(""); };
@@ -1167,13 +1186,29 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
     </div>
     <div style={{textAlign:"center",fontSize:11,color:"var(--mu2)",marginBottom:16}}>{progress}% verified · {verified.length} of {activeUnits.length} units fully scanned</div>
 
+    {/* SCAN FEEDBACK TOAST */}
+    {scanFeedback&&<div style={{position:"fixed",top:70,left:"50%",transform:"translateX(-50%)",zIndex:500,background:scanFeedback.status==="verified"?"rgba(52,211,153,.95)":scanFeedback.status==="partial"?"rgba(251,191,36,.95)":"rgba(248,113,113,.9)",color:"#fff",borderRadius:12,padding:"12px 20px",boxShadow:"0 8px 32px rgba(0,0,0,.5)",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:10,minWidth:260,maxWidth:360,animation:"tin .15s ease"}}>
+      <span style={{fontSize:20}}>{scanFeedback.status==="verified"?"✅":scanFeedback.status==="partial"?"⚠️":"❌"}</span>
+      <div>
+        {scanFeedback.status==="verified"&&<div>Unit Verified! <span style={{fontFamily:"monospace"}}>{scanFeedback.unitId}</span></div>}
+        {scanFeedback.status==="partial"&&<div>{scanFeedback.tagType} tag scanned · <span style={{fontFamily:"monospace"}}>{scanFeedback.unitId}</span><div style={{fontSize:11,fontWeight:400,marginTop:2,opacity:.9}}>Scan the {scanFeedback.tagType==="Indoor"?"Outdoor":"Indoor"} tag to complete</div></div>}
+        {scanFeedback.status==="unknown"&&<div>Unknown tag<div style={{fontSize:11,fontWeight:400,marginTop:2,opacity:.9}}>Not in inventory: <span style={{fontFamily:"monospace"}}>{scanFeedback.tag}</span></div></div>}
+      </div>
+    </div>}
+
     {/* SCAN BOX */}
     <div className="scan-input-wrap">
       <div style={{fontSize:22,marginBottom:7}}>📡</div>
       <div style={{fontSize:13,fontWeight:700,marginBottom:3,color:"var(--tx)"}}>Scan RFID Tags</div>
       <div style={{fontSize:11,color:"var(--mu2)",marginBottom:13}}>Use camera OR type tag ID · Both Indoor + Outdoor must be scanned to verify a unit</div>
       <div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
-        <button className="btn bp" style={{fontSize:13,padding:"9px 18px"}} onClick={()=>openCamera&&openCamera("verify", code=>{ setScannedRfids(prev=>new Set([...prev,code])); })}>
+        <button className="btn bp" style={{fontSize:13,padding:"9px 18px"}} onClick={()=>openCamera&&openCamera("verify", code=>{
+            setScannedRfids(prev=>new Set([...prev,code]));
+            const matchedUnit=rfidMap[code];
+            if(matchedUnit){ setScanFeedback({tag:code,status:"partial",unitId:matchedUnit.id,brand:matchedUnit.brand,tonnage:matchedUnit.tonnage,tagType:(matchedUnit.rfidIn||"").toUpperCase()===code?"Indoor":"Outdoor"}); }
+            else { setScanFeedback({tag:code,status:"unknown"}); }
+            setTimeout(()=>setScanFeedback(null),2500);
+          })}>
           📷 Open Camera Scanner
         </button>
         <span style={{fontSize:11,color:"var(--mu2)"}}>or type below</span>
@@ -1426,9 +1461,9 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     <div className="ph"><div><div className="pt">💰 Sales</div><div className="ps">Manage sales, invoices and dispatch</div></div></div>
     <div className="sg sg4">
       <div className="sc gr"><div className="sl">Available</div><div className="sv gr">{avail.length}</div></div>
-      <div className="sc in"><div className="sl">Avail Value</div><div className="sv in" style={{fontSize:14}}>{fmt(avail.reduce((s,u)=>s+(u.salePrice||0),0))}</div></div>
-      <div className="sc gy"><div className="sl">Sold</div><div className="sv gy">{sold.length}</div></div>
-      <div className="sc am"><div className="sl">Revenue</div><div className="sv am" style={{fontSize:14}}>{fmt(sold.reduce((s,u)=>s+(u.salePrice||0),0))}</div></div>
+      {user?.role==="admin"&&<div className="sc in"><div className="sl">Avail Value</div><div className="sv in" style={{fontSize:14}}>{fmt(avail.reduce((s,u)=>s+(u.salePrice||0),0))}</div></div>}
+      <div className="sc gy"><div className="sl">Active Sales</div><div className="sv gy">{activeSold.length}</div></div>
+      {user?.role==="admin"&&<div className="sc am"><div className="sl">Total Revenue</div><div className="sv am" style={{fontSize:14}}>{fmt(sold.reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0))}</div></div>}
     </div>
     <div className="filt">
       <div className={`chip ${tab==="available"?"on":""}`} onClick={()=>setTab("available")}>✅ Available ({avail.length})</div>
@@ -2437,57 +2472,99 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
   useEffect(() => {
     let jsQR = null;
 
-    // Load jsQR from CDN
+    // Load ZXing (handles BOTH QR codes AND 1D barcodes: Code128, Code39, EAN, etc.)
+    let reader = null;
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
-    script.onload = () => {
-      jsQR = window.jsQR;
-      startCamera();
+    script.src = "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js";
+    script.onload = () => { startCamera(); };
+    script.onerror = () => {
+      // Fallback to jsQR if ZXing fails
+      const s2 = document.createElement("script");
+      s2.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+      s2.onload = () => { jsQR = window.jsQR; startCameraJsQR(); };
+      s2.onerror = () => setError("Scanner library failed to load. Check internet connection.");
+      document.head.appendChild(s2);
     };
-    script.onerror = () => setError("Could not load scanner library. Check internet.");
     document.head.appendChild(script);
 
     async function startCamera() {
       try {
+        // ZXing browser continuous scan — handles QR + all 1D barcodes
+        const hints = new Map();
+        // Try all formats including linear barcodes
+        if (window.ZXingBrowser) {
+          const codeReader = new window.ZXingBrowser.BrowserMultiFormatReader();
+          reader = codeReader;
+          const devices = await window.ZXingBrowser.BrowserMultiFormatReader.listVideoInputDevices();
+          // Prefer back camera
+          const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length-1];
+          const deviceId = backCam?.deviceId;
+          setScanning(true);
+          await codeReader.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
+            if (result) {
+              const code = result.getText().trim().toUpperCase();
+              setLastScan(prev => {
+                if (prev === code) return prev;
+                onScan(code);
+                // Flash effect on video border
+                if (videoRef.current) {
+                  videoRef.current.style.outline = "3px solid #34D399";
+                  setTimeout(() => { if(videoRef.current) videoRef.current.style.outline = "none"; }, 500);
+                }
+                return code;
+              });
+            }
+          });
+        } else {
+          startCameraJsQR();
+        }
+      } catch(e) {
+        setError("Camera access denied. Please allow camera permission and reload.");
+      }
+    }
+
+    // Fallback: jsQR for QR codes only
+    async function startCameraJsQR() {
+      try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+          video: { facingMode: "environment", width:{ideal:1280}, height:{ideal:720} }
         });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play();
           setScanning(true);
-          scanLoop();
+          scanLoopJsQR();
         }
       } catch(e) {
-        setError("Camera access denied. Please allow camera permission in your browser settings.");
+        setError("Camera access denied. Please allow camera permission in browser settings.");
       }
     }
 
-    function scanLoop() {
+    function scanLoopJsQR() {
       if (!videoRef.current || !canvasRef.current || !jsQR) return;
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+      const video = videoRef.current; const canvas = canvasRef.current;
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts:"dontInvert" });
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {inversionAttempts:"dontInvert"});
         if (code && code.data && code.data !== lastScan) {
           setLastScan(code.data);
           onScan(code.data.trim().toUpperCase());
-          // Flash green border effect
           canvas.style.outline = "3px solid #34D399";
           setTimeout(() => { if(canvas) canvas.style.outline = "none"; }, 400);
         }
       }
-      rafRef.current = requestAnimationFrame(scanLoop);
+      rafRef.current = requestAnimationFrame(scanLoopJsQR);
     }
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      // Stop ZXing reader if active
+      try { if (reader && reader.reset) reader.reset(); } catch(e){}
+      // Stop raw stream if fallback was used
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       if (document.head.contains(script)) document.head.removeChild(script);
     };
