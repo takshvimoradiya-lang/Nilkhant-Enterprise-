@@ -829,6 +829,7 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
 
 function Dashboard({ units, tonnages, warehouses, customers, dispatches, user }) {
   const [view, setView] = useState("overall");
+  const [stockTab, setStockTab] = useState("brand"); // brand | tonnage | star
   const [showPendPay, setShowPendPay] = useState(false);
 
   const tdStr = () => new Date().toISOString().split("T")[0];
@@ -995,6 +996,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
     <div className="dash-tabs">
       <div className={`dash-tab ${view==="overall"?"on":""}`} onClick={()=>setView("overall")}>📊 Overall</div>
       {warehouses.map(wh=><div key={wh.id} className={`dash-tab ${view===wh.id?"on":""}`} onClick={()=>setView(wh.id)}>🏭 {wh.name}</div>)}
+      <div className={`dash-tab ${view==="stock"?"on":""}`} onClick={()=>setView("stock")} style={{background:view==="stock"?"rgba(52,211,153,.15)":"",borderColor:view==="stock"?"rgba(52,211,153,.4)":"",color:view==="stock"?"var(--gr)":""}}>📦 In Stock</div>
       <div className={`dash-tab ${view==="brand"?"on":""}`} onClick={()=>setView("brand")}>🏷️ Brand-wise</div>
     </div>
 
@@ -1010,6 +1012,110 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
     })}
 
     {view==="brand"&&<BrandView unitSet={units}/>}
+
+    {/* IN STOCK QUICK VIEW */}
+    {view==="stock"&&<div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        <span style={{fontSize:10,fontWeight:700,color:"var(--mu2)",textTransform:"uppercase",letterSpacing:.7}}>Group by:</span>
+        {[["brand","🏷️ Brand"],["tonnage","📐 Tonnage"],["star","⭐ Stars"],["warehouse","🏭 Warehouse"]].map(([id,label])=>
+          <div key={id} className={`chip ${stockTab===id?"on":""}`} onClick={()=>setStockTab(id)}>{label}</div>
+        )}
+      </div>
+
+      {/* GROUP BY BRAND */}
+      {stockTab==="brand"&&(() => {
+        const brandList = [...new Set(units.filter(u=>u.status==="available").map(u=>u.brand))].sort();
+        if(!brandList.length) return <div className="empty"><div className="ei">📦</div><div className="et">No available stock</div></div>;
+        return <div className="card"><div className="chd"><div><div className="ct">Available Stock by Brand</div><div className="cs">{units.filter(u=>u.status==="available").length} units total</div></div></div>
+          <div className="tw"><table>
+            <thead><tr><th>Brand</th><th>Total</th>{[...new Set(units.filter(u=>u.status==="available").map(u=>u.tonnage))].sort().map(t=><th key={t}>{t}</th>)}<th>Stars</th><th>Stock Value</th></tr></thead>
+            <tbody>{brandList.map(brand=>{
+              const bu=units.filter(u=>u.status==="available"&&u.brand===brand);
+              const tons=[...new Set(units.filter(u=>u.status==="available").map(u=>u.tonnage))].sort();
+              const starSummary=[...new Set(bu.map(u=>u.starRating).filter(Boolean))].map(s=>starLabel(s)).join(" ");
+              return <tr key={brand}>
+                <td style={{fontWeight:700}}>{brand}</td>
+                <td style={{color:"var(--ac)",fontWeight:700}}>{bu.length}</td>
+                {tons.map(t=><td key={t} style={{color:bu.filter(u=>u.tonnage===t).length>0?"var(--gr)":"var(--mu)",fontWeight:600}}>{bu.filter(u=>u.tonnage===t).length||"—"}</td>)}
+                <td style={{fontSize:11,color:"var(--am)"}}>{starSummary||"—"}</td>
+                <td className="price">{fmt(bu.reduce((s,u)=>s+(u.salePrice||0),0))}</td>
+              </tr>;
+            })}</tbody>
+            <tfoot><tr style={{borderTop:"2px solid var(--b2)"}}>
+              <td style={{fontWeight:800,color:"var(--tx)"}}>TOTAL</td>
+              <td style={{fontWeight:800,color:"var(--ac)"}}>{units.filter(u=>u.status==="available").length}</td>
+              {[...new Set(units.filter(u=>u.status==="available").map(u=>u.tonnage))].sort().map(t=><td key={t} style={{fontWeight:700,color:"var(--gr)"}}>{units.filter(u=>u.status==="available"&&u.tonnage===t).length}</td>)}
+              <td/>
+              <td className="price" style={{fontWeight:800}}>{fmt(units.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0))}</td>
+            </tr></tfoot>
+          </table></div>
+        </div>;
+      })()}
+
+      {/* GROUP BY TONNAGE */}
+      {stockTab==="tonnage"&&(() => {
+        const tonList = [...new Set(units.filter(u=>u.status==="available").map(u=>u.tonnage))].sort();
+        if(!tonList.length) return <div className="empty"><div className="ei">📦</div><div className="et">No available stock</div></div>;
+        return <div className="card"><div className="chd"><div><div className="ct">Available Stock by Tonnage</div></div></div>
+          <div className="tw"><table>
+            <thead><tr><th>Tonnage</th><th>Total</th>{[...new Set(units.filter(u=>u.status==="available").map(u=>u.brand))].sort().map(b=><th key={b}>{b}</th>)}<th>Stock Value</th></tr></thead>
+            <tbody>{tonList.map(ton=>{
+              const tu=units.filter(u=>u.status==="available"&&u.tonnage===ton);
+              const brands=[...new Set(units.filter(u=>u.status==="available").map(u=>u.brand))].sort();
+              return <tr key={ton}>
+                <td><span className="ton-badge">{ton}</span></td>
+                <td style={{color:"var(--ac)",fontWeight:700}}>{tu.length}</td>
+                {brands.map(b=><td key={b} style={{color:tu.filter(u=>u.brand===b).length>0?"var(--gr)":"var(--mu)",fontWeight:600}}>{tu.filter(u=>u.brand===b).length||"—"}</td>)}
+                <td className="price">{fmt(tu.reduce((s,u)=>s+(u.salePrice||0),0))}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </div>;
+      })()}
+
+      {/* GROUP BY STAR */}
+      {stockTab==="star"&&<div className="card"><div className="chd"><div><div className="ct">Available Stock by Star Rating</div></div></div>
+        <div className="tw"><table>
+          <thead><tr><th>Stars</th><th>Rating</th><th>Total</th>{[...new Set(units.filter(u=>u.status==="available").map(u=>u.brand))].sort().map(b=><th key={b}>{b}</th>)}<th>Stock Value</th></tr></thead>
+          <tbody>{[...STAR_RATINGS,{id:"none",label:"Unrated",stars:0}].map(sr=>{
+            const su=sr.id==="none"?units.filter(u=>u.status==="available"&&!u.starRating):units.filter(u=>u.status==="available"&&u.starRating===sr.id);
+            if(!su.length)return null;
+            const brands=[...new Set(units.filter(u=>u.status==="available").map(u=>u.brand))].sort();
+            return <tr key={sr.id}>
+              <td style={{fontSize:14,color:"var(--am)"}}>{sr.id==="none"?"—":starLabel(sr.id)}</td>
+              <td style={{fontSize:11,fontWeight:600}}>{sr.label}</td>
+              <td style={{color:"var(--ac)",fontWeight:700}}>{su.length}</td>
+              {brands.map(b=><td key={b} style={{color:su.filter(u=>u.brand===b).length>0?"var(--gr)":"var(--mu)",fontWeight:600}}>{su.filter(u=>u.brand===b).length||"—"}</td>)}
+              <td className="price">{fmt(su.reduce((s,u)=>s+(u.salePrice||0),0))}</td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+      </div>}
+
+      {/* GROUP BY WAREHOUSE */}
+      {stockTab==="warehouse"&&<div>
+        {warehouses.map(wh=>{
+          const wu=units.filter(u=>u.status==="available"&&u.warehouse===wh.id);
+          if(!wu.length) return null;
+          return <div key={wh.id} className="card" style={{marginBottom:12}}>
+            <div className="chd"><div><div className="ct">🏭 {wh.name}</div><div className="cs">{wu.length} units available · {fmt(wu.reduce((s,u)=>s+(u.salePrice||0),0))}</div></div></div>
+            <div className="tw"><table>
+              <thead><tr><th>Unit ID</th><th>Brand</th><th>Tonnage</th><th>Stars</th><th>Model</th><th>Price</th><th>Lot</th></tr></thead>
+              <tbody>{wu.sort((a,b)=>a.brand.localeCompare(b.brand)).map(u=><tr key={u.id}>
+                <td><span className="uid">{u.id}</span></td>
+                <td style={{fontWeight:600}}>{u.brand}</td>
+                <td><span className="ton-badge">{u.tonnage}</span></td>
+                <td style={{fontSize:12,color:"var(--am)"}}>{u.starRating?starLabel(u.starRating):"—"}</td>
+                <td style={{fontSize:11,color:"var(--mu2)"}}>{u.model||"—"}</td>
+                <td className="price">{fmt(u.salePrice)}</td>
+                <td><span className="lot">{u.lot||"—"}</span></td>
+              </tr>)}</tbody>
+            </table></div>
+          </div>;
+        })}
+        {units.filter(u=>u.status==="available").length===0&&<div className="empty"><div className="ei">📦</div><div className="et">No available stock</div></div>}
+      </div>}
+    </div>}
   </div>;
 }
 
@@ -1434,7 +1540,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [fBrand,  setFBrand]  = useState("all");
-  const [fLot,    setFLot]    = useState("all");
+  const [fTon,    setFTon]    = useState("all");
   const [fStar,   setFStar]   = useState("all");
   const [fWH,     setFWH]     = useState("all");
   const avail=units.filter(u=>u.status==="available");
@@ -1444,7 +1550,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   const activeSold = sold.filter(u=>!isCompleted(u));  // needs action
   const completedSold = sold.filter(u=>isCompleted(u)); // done, hide by default
   const matchS=u=>{ if(!search)return true; const q=search.toLowerCase(); return u.id.toLowerCase().includes(q)||u.brand.toLowerCase().includes(q)||(u.lot||"").toLowerCase().includes(q)||(u.soldTo||"").toLowerCase().includes(q)||(u.rfidIn||"").toLowerCase().includes(q)||(u.rfidOut||"").toLowerCase().includes(q)||(u.invoiceNo||"").toLowerCase().includes(q)||(starLabel(u.starRating)).includes(q); };
-  const matchFilter=u=>(fBrand==="all"||u.brand===fBrand)&&(fLot==="all"||u.lot===fLot)&&(fStar==="all"||(fStar==="none"?!u.starRating:u.starRating===fStar))&&(fWH==="all"||u.warehouse===fWH);
+  const matchFilter=u=>(fBrand==="all"||u.brand===fBrand)&&(fTon==="all"||u.tonnage===fTon)&&(fStar==="all"||(fStar==="none"?!u.starRating:u.starRating===fStar))&&(fWH==="all"||u.warehouse===fWH);
   const soldRows = (showCompleted ? sold : activeSold).filter(matchS);
   const rows = tab==="sold" ? soldRows : units.filter(u=>u.status===tab&&matchS(u)&&matchFilter(u));
 
@@ -1519,9 +1625,9 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
         <option value="all">All Brands</option>
         {[...new Set(avail.map(u=>u.brand))].sort().map(b=><option key={b}>{b} ({avail.filter(u=>u.brand===b).length})</option>)}
       </select>
-      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:140}} value={fLot} onChange={e=>setFLot(e.target.value)}>
-        <option value="all">All Lots</option>
-        {[...new Set(avail.map(u=>u.lot||""))].filter(Boolean).sort().map(l=><option key={l}>{l} ({avail.filter(u=>u.lot===l).length})</option>)}
+      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:130}} value={fTon} onChange={e=>setFTon(e.target.value)}>
+        <option value="all">All Tonnage</option>
+        {[...new Set(avail.map(u=>u.tonnage))].sort().map(t=><option key={t}>{t} ({avail.filter(u=>u.tonnage===t).length})</option>)}
       </select>
       <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:130}} value={fStar} onChange={e=>setFStar(e.target.value)}>
         <option value="all">All Stars</option>
@@ -1532,7 +1638,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
         <option value="all">All Warehouses</option>
         {warehouses.map(wh=><option key={wh.id} value={wh.id}>{wh.name} ({avail.filter(u=>u.warehouse===wh.id).length})</option>)}
       </select>
-      {(fBrand!=="all"||fLot!=="all"||fStar!=="all"||fWH!=="all")&&<button className="btn brd bsm" onClick={()=>{setFBrand("all");setFLot("all");setFStar("all");setFWH("all");}}>✕ Clear</button>}
+      {(fBrand!=="all"||fTon!=="all"||fStar!=="all"||fWH!=="all")&&<button className="btn brd bsm" onClick={()=>{setFBrand("all");setFTon("all");setFStar("all");setFWH("all");}}>✕ Clear</button>}
     </div>}
     <div className="card"><div className="chd"><div className="ct">{tab==="available"?"✅ Available":showCompleted?"💰 All Sold (incl. completed)":"💰 Active Sales (pending action)"} ({rows.length})</div></div>
       {rows.length===0?<div className="empty"><div className="ei">📭</div><div className="et">No units found</div></div>:(
