@@ -26,8 +26,19 @@ const DISPATCH_STAGES = [
   { id:"booked",    label:"Booked",          icon:"📋", color:"#FBBF24" },
   { id:"out",       label:"Out for Delivery", icon:"🚚", color:"#38BDF8" },
   { id:"delivered", label:"Delivered",        icon:"📦", color:"#34D399" },
+  { id:"fitting",   label:"Fitting Done",     icon:"🔧", color:"#34D399" },
   { id:"paid",      label:"Payment Received", icon:"💰", color:"#818CF8" },
 ];
+
+const STAR_RATINGS = [
+  { id:"1star", label:"1 Star", stars:1 },
+  { id:"2star", label:"2 Star", stars:2 },
+  { id:"3star", label:"3 Star", stars:3 },
+  { id:"4star", label:"4 Star", stars:4 },
+  { id:"5star", label:"5 Star", stars:5 },
+];
+const starLabel = s => s ? "⭐".repeat(Number(s.replace?.(/[^0-9]/g,"")||0)||Number(s)||0) : "—";
+const starNum   = s => Number((s||"").toString().replace(/[^0-9]/g,""))||0;
 
 const today  = () => new Date().toISOString().split("T")[0];
 const fmt    = n => (n!=null&&n!=="")?"₹"+Number(n).toLocaleString("en-IN"):"—";
@@ -584,8 +595,8 @@ function downloadSampleExcel(lots, brands, tonnages, warehouses) {
   function doDownload() {
     const wb = window.XLSX.utils.book_new();
     const sample = [
-      {"Lot Number":"LOT-2025-001","Brand":"LG","Tonnage":"1.5 Ton","Model":"Dual Inverter","Supplier":"CoolTech Pvt Ltd","Received Date":"2025-01-15","Sale Price":"13500","RFID Indoor":"RFI-001-IN","RFID Outdoor":"RFI-001-OUT","Warehouse":warehouses[0]?.name||"Warehouse 1","QC Done":"No","Notes":""},
-      {"Lot Number":"LOT-2025-001","Brand":"Daikin","Tonnage":"2 Ton","Model":"FTKF","Supplier":"CoolTech Pvt Ltd","Received Date":"2025-01-15","Sale Price":"22000","RFID Indoor":"RFI-002-IN","RFID Outdoor":"RFI-002-OUT","Warehouse":warehouses[0]?.name||"Warehouse 1","QC Done":"Yes","Notes":"Pre-tested"},
+      {"Lot Number":"LOT-2025-001","Brand":"LG","Tonnage":"1.5 Ton","Star Rating":"3star","Model":"Dual Inverter","Supplier":"CoolTech Pvt Ltd","Received Date":"2025-01-15","Sale Price":"13500","RFID Indoor":"RFI-001-IN","RFID Outdoor":"RFI-001-OUT","Warehouse":warehouses[0]?.name||"Warehouse 1","QC Done":"No","Notes":""},
+      {"Lot Number":"LOT-2025-001","Brand":"Daikin","Tonnage":"2 Ton","Star Rating":"5star","Model":"FTKF","Supplier":"CoolTech Pvt Ltd","Received Date":"2025-01-15","Sale Price":"22000","RFID Indoor":"RFI-002-IN","RFID Outdoor":"RFI-002-OUT","Warehouse":warehouses[0]?.name||"Warehouse 1","QC Done":"Yes","Notes":"Pre-tested"},
     ];
     const ws = window.XLSX.utils.json_to_sheet(sample);
     ws["!cols"] = [{wch:16},{wch:12},{wch:10},{wch:16},{wch:18},{wch:14},{wch:12},{wch:14},{wch:15},{wch:14},{wch:10},{wch:20}];
@@ -597,6 +608,7 @@ function downloadSampleExcel(lots, brands, tonnages, warehouses) {
       {"Field":"Model","Required":"No","Notes":"Free text e.g. Dual Inverter"},
       {"Field":"Supplier","Required":"No","Notes":"Supplier company name"},
       {"Field":"Received Date","Required":"No","Notes":"Format: YYYY-MM-DD. Defaults to today"},
+      {"Field":"Star Rating","Required":"No","Notes":"1star, 2star, 3star, 4star, or 5star. Leave blank if not rated"},
       {"Field":"Sale Price","Required":"YES","Notes":"Numbers only, no ₹ or commas. e.g. 13500"},
       {"Field":"RFID Indoor","Required":"No","Notes":"RFID tag ID for indoor unit. Can assign later"},
       {"Field":"RFID Outdoor","Required":"No","Notes":"RFID tag ID for outdoor unit. Can assign later"},
@@ -633,6 +645,7 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
     "rfid outdoor":"rfidOut","rfid out":"rfidOut",
     "warehouse":"warehouseName","notes":"notes","remark":"notes",
     "qc done":"qcDone","qc":"qcDone","quality check":"qcDone",
+    "star rating":"starRating","stars":"starRating","star":"starRating","rating":"starRating",
   };
 
   function parseFile(file) {
@@ -658,6 +671,8 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
             // QC Done handling
             const qcDoneVal = (row.qcDone||"").toLowerCase();
             row.qcDone = qcDoneVal==="yes"||qcDoneVal==="y"||qcDoneVal==="true"||qcDoneVal==="1";
+            // Normalize star rating
+            if(row.starRating){ const sn=row.starRating.toLowerCase().replace(/[^0-9]/g,""); row.starRating=sn?`${sn}star`:""; }
             row.status = row.qcDone ? "available" : "pending_qc";
             row.qcAttempts = row.qcDone ? 1 : 0;
             row.testedBy = row.qcDone ? "Bulk Import" : "";
@@ -953,6 +968,24 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
       })}
     </div>}
 
+    {/* STAR-WISE AVAILABLE STOCK */}
+    {units.filter(u=>u.status==="available"&&u.starRating).length>0&&<div className="card">
+      <div className="chd"><div><div className="ct">⭐ Available Stock by Star Rating</div><div className="cs">Only rated units shown</div></div></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {STAR_RATINGS.map(sr=>{ const cnt=units.filter(u=>u.status==="available"&&u.starRating===sr.id).length; if(!cnt)return null;
+          return <div key={sr.id} style={{background:"rgba(251,191,36,.08)",border:"1px solid rgba(251,191,36,.2)",borderRadius:9,padding:"10px 16px",textAlign:"center",minWidth:90}}>
+            <div style={{fontSize:18,marginBottom:3}}>{starLabel(sr.id)}</div>
+            <div style={{fontSize:22,fontWeight:900,color:"var(--am)",letterSpacing:-1}}>{cnt}</div>
+            <div style={{fontSize:10,color:"var(--mu2)",marginTop:2}}>available</div>
+          </div>; })}
+        {units.filter(u=>u.status==="available"&&!u.starRating).length>0&&<div style={{background:"rgba(255,255,255,.03)",border:"1px solid var(--b1)",borderRadius:9,padding:"10px 16px",textAlign:"center",minWidth:90}}>
+          <div style={{fontSize:18,marginBottom:3}}>—</div>
+          <div style={{fontSize:22,fontWeight:900,color:"var(--mu2)",letterSpacing:-1}}>{units.filter(u=>u.status==="available"&&!u.starRating).length}</div>
+          <div style={{fontSize:10,color:"var(--mu)",marginTop:2}}>unrated</div>
+        </div>}
+      </div>
+    </div>}
+
     {/* PIPELINE */}
     <div className="card"><div className="chd"><div className="ct">Pipeline Flow</div></div>
       <div className="pipe">{[["🚛","Received",overall.total,"var(--ac)"],["⏳","Pending QC",overall.pend,"var(--am)"],["🔧","Repair",overall.rep,"var(--rd)"],["✅","Available",overall.avail,"var(--gr)"],["💰","Sold",overall.sold,"var(--gy)"]].map(([ic,lb,vl,cl],i)=><div className="ps2" key={i}><div style={{fontSize:15,marginBottom:2}}>{ic}</div><div className="pv" style={{color:cl}}>{vl}</div><div className="plbl">{lb}</div></div>)}</div>
@@ -986,9 +1019,9 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
   const [showUpload, setShowUpload]=useState(false);
   const [showTx, setShowTx]=useState(null); // unit to transfer
   const [txWh, setTxWh]=useState("");
-  const [form, setForm]=useState({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:""});
+  const [form, setForm]=useState({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:""});
   const f=v=>setForm(p=>({...p,...v}));
-  const submit=()=>{ if(!form.brand||!form.tonnage||!form.lot||!form.salePrice||!form.warehouse)return; onAdd({id:"AC-"+String(units.length+1).padStart(3,"0"),...form,salePrice:Number(form.salePrice),status:"pending_qc",qcAttempts:0}); setShowForm(false); setForm({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:""}); };
+  const submit=()=>{ if(!form.brand||!form.tonnage||!form.lot||!form.salePrice||!form.warehouse)return; onAdd({id:"AC-"+String(units.length+1).padStart(3,"0"),...form,salePrice:Number(form.salePrice),status:"pending_qc",qcAttempts:0}); setShowForm(false); setForm({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:""}); };
   const lotGroups={};
   units.forEach(u=>{ if(!lotGroups[u.lot])lotGroups[u.lot]={units:[],pend:0,avail:0,rep:0,sold:0,val:0}; lotGroups[u.lot].units.push(u); lotGroups[u.lot][u.status==="pending_qc"?"pend":u.status==="available"?"avail":u.status==="under_repair"?"rep":"sold"]++; if(u.salePrice&&u.status==="available")lotGroups[u.lot].val+=u.salePrice; });
 
@@ -1014,12 +1047,13 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
     </div>
     <div className="card"><div className="chd"><div><div className="ct">All Units</div></div></div>
       <div className="tw"><table>
-        <thead><tr><th>ID</th><th>Warehouse</th><th>Lot</th><th>Brand/Ton</th><th>RFID</th><th>Price</th><th>Status</th>{user.role==="admin"&&<th>Action</th>}</tr></thead>
+        <thead><tr><th>ID</th><th>Warehouse</th><th>Lot</th><th>Brand/Ton</th><th>Stars</th><th>RFID</th><th>Price</th><th>Status</th>{user.role==="admin"&&<th>Action</th>}</tr></thead>
         <tbody>{units.map(u=><tr key={u.id}>
           <td><span className="uid">{u.id}</span></td>
           <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
           <td><span className="lot">{u.lot||"—"}</span></td>
           <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
+          <td style={{fontSize:11}}>{u.starRating?starLabel(u.starRating):<span style={{color:"var(--mu)"}}>—</span>}</td>
           <td>{u.rfidIn?<><span className="rtag">{u.rfidIn}</span><br/><span className="rtag">{u.rfidOut}</span></>:<span style={{fontSize:9.5,color:"var(--am)"}}>⚠️ None</span>}</td>
           <td className="price">{fmt(u.salePrice)}</td>
           <td><Bdg status={u.status}/></td>
@@ -1036,6 +1070,7 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
         <div className="fi"><label className="fl">Lot *</label><select className="fs" value={form.lot} onChange={e=>f({lot:e.target.value})}><option value="">Select</option>{lots.map(l=><option key={l.id}>{l.number}</option>)}</select></div>
         <div className="fi"><label className="fl">Brand *</label><select className="fs" value={form.brand} onChange={e=>f({brand:e.target.value})}><option value="">Select</option>{brands.map(b=><option key={b.id}>{b.name}</option>)}</select></div>
         <div className="fi"><label className="fl">Tonnage *</label><select className="fs" value={form.tonnage} onChange={e=>f({tonnage:e.target.value})}><option value="">Select</option>{tonnages.map(t=><option key={t.id}>{t.value}</option>)}</select></div>
+        <div className="fi"><label className="fl">Star Rating</label><select className="fs" value={form.starRating} onChange={e=>f({starRating:e.target.value})}><option value="">Not specified</option>{STAR_RATINGS.map(s=><option key={s.id} value={s.id}>{starLabel(s.id)} {s.label}</option>)}</select></div>
         <div className="fi"><label className="fl">Model</label><input className="fn" value={form.model} onChange={e=>f({model:e.target.value})} placeholder="Optional"/></div>
         <div className="fi"><label className="fl">Supplier</label><input className="fn" value={form.supplier} onChange={e=>f({supplier:e.target.value})}/></div>
         <div className="fi"><label className="fl">Sale Price ₹ *</label><input type="number" className="fn" value={form.salePrice} onChange={e=>f({salePrice:e.target.value})}/></div>
@@ -1398,16 +1433,20 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   const [df,setDf]=useState({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
 
   const [showCompleted, setShowCompleted] = useState(false);
+  const [fBrand,  setFBrand]  = useState("all");
+  const [fLot,    setFLot]    = useState("all");
+  const [fStar,   setFStar]   = useState("all");
+  const [fWH,     setFWH]     = useState("all");
   const avail=units.filter(u=>u.status==="available");
   // "completed" = sold + payment received + delivered
-  const isCompleted = u => u.status==="sold" && u.paymentReceived===true && dispatches.find(d=>d.unitId===u.id&&(d.stage==="delivered"||d.stage==="paid"));
+  const isCompleted = u => u.status==="sold" && u.paymentReceived===true && dispatches.find(d=>d.unitId===u.id&&(d.stage==="fitting"||d.stage==="paid"));
   const sold = units.filter(u=>u.status==="sold");
   const activeSold = sold.filter(u=>!isCompleted(u));  // needs action
   const completedSold = sold.filter(u=>isCompleted(u)); // done, hide by default
-  const matchS=u=>{ if(!search)return true; const q=search.toLowerCase(); return u.id.toLowerCase().includes(q)||u.brand.toLowerCase().includes(q)||(u.lot||"").toLowerCase().includes(q)||(u.soldTo||"").toLowerCase().includes(q)||(u.rfidIn||"").toLowerCase().includes(q)||(u.rfidOut||"").toLowerCase().includes(q)||(u.invoiceNo||"").toLowerCase().includes(q); };
-  // For sold tab: show active by default, completed only when toggled
+  const matchS=u=>{ if(!search)return true; const q=search.toLowerCase(); return u.id.toLowerCase().includes(q)||u.brand.toLowerCase().includes(q)||(u.lot||"").toLowerCase().includes(q)||(u.soldTo||"").toLowerCase().includes(q)||(u.rfidIn||"").toLowerCase().includes(q)||(u.rfidOut||"").toLowerCase().includes(q)||(u.invoiceNo||"").toLowerCase().includes(q)||(starLabel(u.starRating)).includes(q); };
+  const matchFilter=u=>(fBrand==="all"||u.brand===fBrand)&&(fLot==="all"||u.lot===fLot)&&(fStar==="all"||(fStar==="none"?!u.starRating:u.starRating===fStar))&&(fWH==="all"||u.warehouse===fWH);
   const soldRows = (showCompleted ? sold : activeSold).filter(matchS);
-  const rows = tab==="sold" ? soldRows : units.filter(u=>u.status===tab&&matchS(u));
+  const rows = tab==="sold" ? soldRows : units.filter(u=>u.status===tab&&matchS(u)&&matchFilter(u));
 
   const doSell=()=>{
     if(!sf.name||!sf.phone)return;
@@ -1416,7 +1455,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     const bookAmt=Number(sf.bookingAmt)||0;
     const totalAmt=Number(sf.totalAmt)||sellModal.salePrice||0;
     const remaining=totalAmt-bookAmt;
-    onUpdate(sellModal.id,{status:"sold",soldTo:sf.name,soldDate:sf.soldDate,customerPhone:sf.phone,soldBy:user.name,invoiceNo:invNo,paymentReceived:bookAmt>=totalAmt,bookingAmount:bookAmt,totalAmount:totalAmt,remainingAmount:remaining});
+    onUpdate(sellModal.id,{status:"sold",soldTo:sf.name,soldDate:sf.soldDate,customerPhone:sf.phone,soldBy:user.name,invoiceNo:invNo,paymentReceived:bookAmt>=totalAmt,bookingAmount:bookAmt,totalAmount:totalAmt,remainingAmount:remaining,bookingCollected:bookAmt>0});
     const ex=customers.find(c=>c.phone===sf.phone);
     if(ex) onAddCustomer({...ex,unitIds:[...(ex.unitIds||[]),sellModal.id]},true);
     else onAddCustomer({id:genId(),...sf,createdDate:today(),unitIds:[sellModal.id]},false);
@@ -1466,17 +1505,39 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
       {user?.role==="admin"&&<div className="sc am"><div className="sl">Total Revenue</div><div className="sv am" style={{fontSize:14}}>{fmt(sold.reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0))}</div></div>}
     </div>
     <div className="filt">
-      <div className={`chip ${tab==="available"?"on":""}`} onClick={()=>setTab("available")}>✅ Available ({avail.length})</div>
-      <div className={`chip ${tab==="sold"?"on":""}`} onClick={()=>setTab("sold")}>💰 Active Sales ({activeSold.length})</div>
+      <div className={`chip ${tab==="available"?"on":""}`} onClick={()=>{setTab("available");}}>✅ Available ({avail.filter(matchFilter).length}/{avail.length})</div>
+      <div className={`chip ${tab==="sold"?"on":""}`} onClick={()=>setTab("sold")}>💰 Active ({activeSold.length})</div>
       {completedSold.length>0&&<div className={`chip ${tab==="sold"&&showCompleted?"on":""}`} style={{background:"rgba(148,163,184,.08)",borderColor:"rgba(148,163,184,.2)",color:"var(--gy)"}} onClick={()=>{setTab("sold");setShowCompleted(p=>!p);}}>
-        {showCompleted?"▲ Hide":"▼ Show"} Completed ({completedSold.length})
+        {showCompleted?"▲ Hide":"▼ Show"} Done ({completedSold.length})
       </div>}
-      <input className="srch" placeholder="Search ID, RFID, brand, lot, invoice, customer..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <input className="srch" placeholder="Search ID, RFID, brand, lot, invoice, customer, ⭐..." value={search} onChange={e=>setSearch(e.target.value)}/>
     </div>
+    {/* SMART FILTER — available tab only */}
+    {tab==="available"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+      <span style={{fontSize:10,fontWeight:700,color:"var(--mu2)",textTransform:"uppercase",letterSpacing:.7}}>Filter:</span>
+      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:130}} value={fBrand} onChange={e=>setFBrand(e.target.value)}>
+        <option value="all">All Brands</option>
+        {[...new Set(avail.map(u=>u.brand))].sort().map(b=><option key={b}>{b} ({avail.filter(u=>u.brand===b).length})</option>)}
+      </select>
+      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:140}} value={fLot} onChange={e=>setFLot(e.target.value)}>
+        <option value="all">All Lots</option>
+        {[...new Set(avail.map(u=>u.lot||""))].filter(Boolean).sort().map(l=><option key={l}>{l} ({avail.filter(u=>u.lot===l).length})</option>)}
+      </select>
+      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:130}} value={fStar} onChange={e=>setFStar(e.target.value)}>
+        <option value="all">All Stars</option>
+        {STAR_RATINGS.map(s=>{ const cnt=avail.filter(u=>u.starRating===s.id).length; if(!cnt)return null; return <option key={s.id} value={s.id}>{starLabel(s.id)} {s.label} ({cnt})</option>; })}
+        {avail.filter(u=>!u.starRating).length>0&&<option value="none">— Unrated ({avail.filter(u=>!u.starRating).length})</option>}
+      </select>
+      <select className="fs" style={{fontSize:11,padding:"5px 8px",maxWidth:140}} value={fWH} onChange={e=>setFWH(e.target.value)}>
+        <option value="all">All Warehouses</option>
+        {warehouses.map(wh=><option key={wh.id} value={wh.id}>{wh.name} ({avail.filter(u=>u.warehouse===wh.id).length})</option>)}
+      </select>
+      {(fBrand!=="all"||fLot!=="all"||fStar!=="all"||fWH!=="all")&&<button className="btn brd bsm" onClick={()=>{setFBrand("all");setFLot("all");setFStar("all");setFWH("all");}}>✕ Clear</button>}
+    </div>}
     <div className="card"><div className="chd"><div className="ct">{tab==="available"?"✅ Available":showCompleted?"💰 All Sold (incl. completed)":"💰 Active Sales (pending action)"} ({rows.length})</div></div>
       {rows.length===0?<div className="empty"><div className="ei">📭</div><div className="et">No units found</div></div>:(
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th><th>Price</th>
+          <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th>{tab==="available"&&<th>Stars</th>}<th>Price</th>
             {tab==="sold"?<><th>Invoice</th><th>Customer</th><th>Booking</th><th>Remaining</th><th>Actions</th></>:<th>Action</th>}
           </tr></thead>
           <tbody>{rows.map(u=>{ const d=dispatches.find(x=>x.unitId===u.id); return <tr key={u.id}>
@@ -1484,6 +1545,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
             <td><span className="rtag">{u.rfidIn||"—"}</span><br/><span className="rtag">{u.rfidOut||"—"}</span></td>
             <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
             <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
+            {tab==="available"&&<td style={{fontSize:12}}>{u.starRating?starLabel(u.starRating):<span style={{color:"var(--mu)"}}>—</span>}</td>}
             <td className="price">{fmt(u.salePrice)}</td>
             {tab==="sold"?<>
               <td><span className="invno">{u.invoiceNo||"—"}</span></td>
@@ -1644,12 +1706,12 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
   const [showDone, setShowDone] = useState(false);
   const enriched=dispatches.map(d=>({...d,unit:units.find(u=>u.id===d.unitId),customer:customers.find(c=>c.id===d.customerId)}));
   // "done" = delivered AND payment received on the unit
-  const isDone = d => (d.stage==="delivered"||d.stage==="paid") && units.find(u=>u.id===d.unitId)?.paymentReceived===true;
+  const isDone = d => (d.stage==="fitting"||d.stage==="paid") && units.find(u=>u.id===d.unitId)?.paymentReceived===true;
   const activeDispatches = enriched.filter(d=>!isDone(d));
   const doneDispatches   = enriched.filter(d=>isDone(d));
   const baseSet = showDone ? enriched : activeDispatches;
   const filtered=baseSet.filter(d=>{ const ms=sf==="all"||d.stage===sf; const q=search.toLowerCase(); return ms&&(!search||d.unitId.toLowerCase().includes(q)||(d.invoiceNo||"").toLowerCase().includes(q)||(d.customer?.name||"").toLowerCase().includes(q)||(d.trackingNo||"").toLowerCase().includes(q)); });
-  const adv=(d,ns)=>{ const u={stage:ns}; if(ns==="delivered")u.deliveredDate=today(); if(ns==="paid")u.paymentReceivedDate=today(); onUpdateDispatch(d.id,u); showToast(`${d.unitId} → ${DISPATCH_STAGES.find(s=>s.id===ns)?.label} 🚚`); setSm(null); };
+  const adv=(d,ns)=>{ const u={stage:ns}; if(ns==="delivered")u.deliveredDate=today(); if(ns==="fitting")u.fittingDate=today(); if(ns==="paid")u.paymentReceivedDate=today(); onUpdateDispatch(d.id,u); showToast(`${d.unitId} → ${DISPATCH_STAGES.find(s=>s.id===ns)?.label} 🚚`); setSm(null); };
   const si=id=>DISPATCH_STAGES.findIndex(s=>s.id===id);
   const counts={}; DISPATCH_STAGES.forEach(s=>counts[s.id]=dispatches.filter(d=>d.stage===s.id).length);
   return <div>
@@ -2018,7 +2080,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
   const del=(t,id)=>{ const s=sets[t]; s.set(s.data.filter(x=>x.id!==id)); showToast("Deleted","warn"); };
   const saveUser=()=>{ if(!uform.name||!uform.username||!uform.password)return; const item=umod.item; item?onUsersChange(users.map(u=>u.id===item.id?{...u,...uform}:u)):onUsersChange([...users,{...uform,id:genId()}]); setUmod(null);showToast("User saved ✅"); };
   const togMod=mid=>{ const m=uform.modules||[]; setUform(p=>({...p,modules:m.includes(mid)?m.filter(x=>x!==mid):[...m,mid]})); };
-  const TABS=[{id:"wh",l:"🏭 Warehouses"},{id:"lots",l:"📦 Lots"},{id:"brands",l:"🏷️ Brands"},{id:"tonnages",l:"📐 Tonnage"},{id:"users",l:"👤 Users"},{id:"perms",l:"🔐 Perms"},{id:"invoice",l:"🧾 Invoice"}];
+  const TABS=[{id:"wh",l:"🏭 Warehouses"},{id:"lots",l:"📦 Lots"},{id:"brands",l:"🏷️ Brands"},{id:"tonnages",l:"📐 Tonnage"},{id:"stars",l:"⭐ Stars"},{id:"users",l:"👤 Users"},{id:"perms",l:"🔐 Perms"},{id:"invoice",l:"🧾 Invoice"}];
 
   const MasterSection = ({ type }) => {
     const s=sets[type]; const extraCols=type==="wh"?["location"]:[];
@@ -2041,6 +2103,23 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
     <div className="ph"><div><div className="pt">⚙️ Master & Admin</div><div className="ps">Admin only</div></div></div>
     <div className="mtabs">{TABS.map(t=><button key={t.id} className={`mtab ${tab===t.id?"on":""}`} onClick={()=>setTab(t.id)}>{t.l}</button>)}</div>
     {(tab==="wh"||tab==="lots"||tab==="brands"||tab==="tonnages")&&<MasterSection type={tab}/>}
+    {tab==="stars"&&<div className="card">
+      <div className="chd"><div><div className="ct">⭐ AC Star Ratings</div><div className="cs">Star ratings available for selection in Stock Intake</div></div></div>
+      <table><thead><tr><th>Rating</th><th>Stars</th><th>Description</th></tr></thead>
+      <tbody>{STAR_RATINGS.map(s=><tr key={s.id}>
+        <td style={{fontWeight:700,color:"var(--am)",fontSize:13}}>{starLabel(s.id)}</td>
+        <td style={{fontFamily:"monospace",color:"var(--mu2)",fontSize:11}}>{s.id}</td>
+        <td style={{fontSize:11,color:"var(--mu2)"}}>{{
+          "1star":"Basic / Economy model",
+          "2star":"Standard efficiency",
+          "3star":"Good efficiency · Popular choice",
+          "4star":"High efficiency · Premium",
+          "5star":"Highest efficiency · Best model"
+        }[s.id]}</td>
+      </tr>)}</tbody>
+      </table>
+      <div className="al al-b" style={{marginTop:12}}>ℹ️ <div>Star ratings are fixed (1–5 star). They are selected when adding units. Use them in Sales filters to quickly find what customers ask for.</div></div>
+    </div>}
 
     {tab==="users"&&<div className="card"><div className="chd"><div><div className="ct">👤 Users ({users.length})</div></div><button className="btn bp" onClick={()=>{setUmod({item:null});setUform({name:"",username:"",password:"",role:"technician",modules:["dashboard"],createdDate:today()});}}>+ Add</button></div>
       <div className="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Modules</th><th>Actions</th></tr></thead>
@@ -2656,6 +2735,7 @@ export default function App() {
     paymentReceived:r.payment_received||false,
     bookingAmount:r.booking_amount||0, totalAmount:r.total_amount||0,
     remainingAmount:r.remaining_amount||0, bookingCollected:r.booking_collected||false,
+    starRating:r.star_rating||"",
   });
   const fromUnit = u => ({
     id:u.id, warehouse:u.warehouse||"", lot:u.lot||"", rfid_in:u.rfidIn||"",
@@ -2667,6 +2747,7 @@ export default function App() {
     sold_by:u.soldBy||"", payment_received:u.paymentReceived||false,
     booking_amount:u.bookingAmount||0, total_amount:u.totalAmount||0,
     remaining_amount:u.remainingAmount||0, booking_collected:u.bookingCollected||false,
+    star_rating:u.starRating||"",
   });
   const toWH       = r => ({ id:r.id, name:r.name, location:r.location||"", createdDate:r.created_date||"", remark:r.remark||"" });
   const toAppUser  = r => ({ id:r.id, name:r.name, username:r.username, password:r.password, role:r.role, modules:r.modules||[], createdDate:r.created_date||"" });
