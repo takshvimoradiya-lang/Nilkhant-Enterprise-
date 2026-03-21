@@ -431,7 +431,7 @@ function GlobalSearch({ units, warehouses, onSelect, collapsed }) {
               const wh=warehouses.find(w=>w.id===u.warehouse);
               return <div key={u.id} className="gsd-row" onClick={()=>{onSelect(u);setOpen(false);setQ("");}}>
                 <div className="gsd-id">{u.id} <span style={{color:SC[u.status]?.color,fontSize:9.5}}>{SC[u.status]?.icon} {SC[u.status]?.label}</span></div>
-                <div className="gsd-info">{u.brand} {u.tonnage} · <span style={{color:"var(--am)",fontSize:9}}>{u.lot}</span> · <span style={{color:"var(--ac)",fontSize:9}}>{wh?.name||"—"}</span></div>
+                <div className="gsd-info">{u.brand} {u.tonnage} {u.starRating&&<span style={{color:"var(--am)",fontSize:9}}>{starLabel(u.starRating)}</span>} · <span style={{color:"var(--am)",fontSize:9}}>{u.lot}</span> · <span style={{color:"var(--ac)",fontSize:9}}>{wh?.name||"—"}</span></div>
                 <div className="gsd-rfid">IN: {u.rfidIn||"—"} · OUT: {u.rfidOut||"—"}</div>
               </div>;
             })
@@ -450,7 +450,7 @@ function RFIDDetail({ unit, customers, dispatches, warehouses, onClose }) {
   const wh=warehouses.find(w=>w.id===unit.warehouse);
   const fields=[
     ["Unit ID",<span className="uid">{unit.id}</span>],["Warehouse",<WHLabel whId={unit.warehouse} warehouses={warehouses}/>],
-    ["Lot",<span className="lot">{unit.lot||"—"}</span>],["Brand",unit.brand],["Tonnage",unit.tonnage],["Model",unit.model||"—"],
+    ["Lot",<span className="lot">{unit.lot||"—"}</span>],["Brand",unit.brand],["Tonnage",unit.tonnage],["Star Rating",unit.starRating?<span style={{color:"var(--am)",fontWeight:700}}>{starLabel(unit.starRating)} {unit.starRating.replace("star"," Star")}</span>:"—"],["Model",unit.model||"—"],
     ["Supplier",unit.supplier||"—"],["Received",unit.receivedDate],["Sale Price",<span className="price">{fmt(unit.salePrice)}</span>],
     ["RFID Indoor",<span className="rtag">{unit.rfidIn||"Unassigned"}</span>],["RFID Outdoor",<span className="rtag">{unit.rfidOut||"Unassigned"}</span>],
     ["Status",<Bdg status={unit.status}/>],["QC Attempts",unit.qcAttempts],
@@ -464,7 +464,7 @@ function RFIDDetail({ unit, customers, dispatches, warehouses, onClose }) {
       <div className="mo lg">
         <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:4}}>
           <div style={{width:40,height:40,borderRadius:9,background:"linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.15))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>❄️</div>
-          <div style={{flex:1}}><div className="mti">{unit.brand} {unit.tonnage} · <span className="uid">{unit.id}</span></div><span className="lot">{unit.lot}</span> &nbsp; <WHLabel whId={unit.warehouse} warehouses={warehouses}/></div>
+          <div style={{flex:1}}><div className="mti">{unit.brand} {unit.tonnage} {unit.starRating&&<span style={{color:"var(--am)",fontSize:14}}>{starLabel(unit.starRating)}</span>} · <span className="uid">{unit.id}</span></div><span className="lot">{unit.lot}</span> &nbsp; <WHLabel whId={unit.warehouse} warehouses={warehouses}/></div>
           <Bdg status={unit.status}/>
         </div>
         <div style={{height:1,background:"var(--b1)",margin:"11px 0"}}/>
@@ -516,7 +516,7 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
       "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
       "Supplier":u.supplier||"", "Received Date":u.receivedDate||"",
-      "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
+      "Stars":u.starRating?u.starRating.replace("star"," Star"):"", "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
       "QC Attempts":u.qcAttempts||0, "Tested By":u.testedBy||"", "Tested Date":u.testedDate||"",
       "Repair Note":u.repairNote||"", "Invoice No":u.invoiceNo||"",
       "Sold To":u.soldTo||"", "Sold Date":u.soldDate||"",
@@ -533,7 +533,7 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     const avail = units.filter(u=>u.status==="available").map(u=>({
       "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
-      "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
+      "Stars":u.starRating?u.starRating.replace("star"," Star"):"", "Sale Price":u.salePrice||0, "RFID Indoor":u.rfidIn||"", "RFID Outdoor":u.rfidOut||"",
       "Received Date":u.receivedDate||"", "Tested By":u.testedBy||"",
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(avail.length?avail:[{"Message":"No available units"}]), "Available Stock");
@@ -875,8 +875,8 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
           <span className="price" style={{fontSize:11}}>{fmt(bs.val)}</span>
         </div>
         <div className="brand-table-wrap"><table>
-          <thead><tr><th>Unit ID</th><th>Tonnage</th><th>RFID Indoor</th><th>RFID Outdoor</th><th>Status</th><th>Sale Price</th><th>Location</th></tr></thead>
-          <tbody>{bu.map(u=>{ const wh=warehouses.find(w=>w.id===u.warehouse); return <tr key={u.id}><td><span className="uid">{u.id}</span></td><td><span className="ton-badge">{u.tonnage}</span></td><td>{u.rfidIn?<span className="rtag">{u.rfidIn}</span>:<span style={{color:"var(--mu)",fontSize:10}}>—</span>}</td><td>{u.rfidOut?<span className="rtag">{u.rfidOut}</span>:<span style={{color:"var(--mu)",fontSize:10}}>—</span>}</td><td><Bdg status={u.status}/></td><td className="price">{fmt(u.salePrice)}</td><td><span className="whlabel">🏭 {wh?.name||"—"}</span></td></tr>; })}</tbody>
+          <thead><tr><th>Unit ID</th><th>Tonnage</th><th>Stars</th><th>RFID Indoor</th><th>RFID Outdoor</th><th>Status</th><th>Sale Price</th><th>Location</th></tr></thead>
+          <tbody>{bu.map(u=>{ const wh=warehouses.find(w=>w.id===u.warehouse); return <tr key={u.id}><td><span className="uid">{u.id}</span></td><td><span className="ton-badge">{u.tonnage}</span></td><td style={{fontSize:12,color:"var(--am)"}}>{u.starRating?starLabel(u.starRating):"—"}</td><td>{u.rfidIn?<span className="rtag">{u.rfidIn}</span>:<span style={{color:"var(--mu)",fontSize:10}}>—</span>}</td><td>{u.rfidOut?<span className="rtag">{u.rfidOut}</span>:<span style={{color:"var(--mu)",fontSize:10}}>—</span>}</td><td><Bdg status={u.status}/></td><td className="price">{fmt(u.salePrice)}</td><td><span className="whlabel">🏭 {wh?.name||"—"}</span></td></tr>; })}</tbody>
         </table></div>
       </div>;
     })}</>;
@@ -1047,13 +1047,12 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
     </div>
     <div className="card"><div className="chd"><div><div className="ct">All Units</div></div></div>
       <div className="tw"><table>
-        <thead><tr><th>ID</th><th>Warehouse</th><th>Lot</th><th>Brand/Ton</th><th>Stars</th><th>RFID</th><th>Price</th><th>Status</th>{user.role==="admin"&&<th>Action</th>}</tr></thead>
+        <thead><tr><th>ID</th><th>Warehouse</th><th>Lot</th><th>Brand / Ton / ⭐</th><th>RFID</th><th>Price</th><th>Status</th>{user.role==="admin"&&<th>Action</th>}</tr></thead>
         <tbody>{units.map(u=><tr key={u.id}>
           <td><span className="uid">{u.id}</span></td>
           <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
           <td><span className="lot">{u.lot||"—"}</span></td>
-          <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
-          <td style={{fontSize:11}}>{u.starRating?starLabel(u.starRating):<span style={{color:"var(--mu)"}}>—</span>}</td>
+          <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
           <td>{u.rfidIn?<><span className="rtag">{u.rfidIn}</span><br/><span className="rtag">{u.rfidOut}</span></>:<span style={{fontSize:9.5,color:"var(--am)"}}>⚠️ None</span>}</td>
           <td className="price">{fmt(u.salePrice)}</td>
           <td><Bdg status={u.status}/></td>
@@ -1288,6 +1287,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
                 <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
                   <span className="uid">{u.id}</span>
                   <span style={{fontSize:11.5,fontWeight:600}}>{u.brand} {u.tonnage}</span>
+                  {u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}
                   <WHLabel whId={u.warehouse} warehouses={warehouses}/>
                   <Bdg status={u.status}/>
                 </div>
@@ -1379,7 +1379,7 @@ function QCModule({ units, warehouses, onUpdate, user }) {
             <td><span className="uid">{u.id}</span></td>
             <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
             <td><span className="lot">{u.lot||"—"}</span></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
+            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
             <td>{u.rfidIn?<><span className="rtag">{u.rfidIn}</span><br/><span className="rtag">{u.rfidOut}</span></>:<span style={{fontSize:9.5,color:"var(--am)"}}>⚠️ None</span>}</td>
             <td style={{fontWeight:700,color:u.qcAttempts>1?"var(--rd)":"var(--gr)"}}>{u.qcAttempts}</td>
             {tab==="under_repair"&&<td style={{fontSize:10,color:"#FECACA"}}>{u.repairNote||"—"}</td>}
@@ -1537,15 +1537,15 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
     <div className="card"><div className="chd"><div className="ct">{tab==="available"?"✅ Available":showCompleted?"💰 All Sold (incl. completed)":"💰 Active Sales (pending action)"} ({rows.length})</div></div>
       {rows.length===0?<div className="empty"><div className="ei">📭</div><div className="et">No units found</div></div>:(
         <div className="tw"><table>
-          <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th>{tab==="available"&&<th>Stars</th>}<th>Price</th>
+          <thead><tr><th>ID</th><th>RFID</th><th>Location</th><th>Brand/Ton</th><th>Price</th>
             {tab==="sold"?<><th>Invoice</th><th>Customer</th><th>Booking</th><th>Remaining</th><th>Actions</th></>:<th>Action</th>}
           </tr></thead>
           <tbody>{rows.map(u=>{ const d=dispatches.find(x=>x.unitId===u.id); return <tr key={u.id}>
             <td><span className="uid">{u.id}</span></td>
             <td><span className="rtag">{u.rfidIn||"—"}</span><br/><span className="rtag">{u.rfidOut||"—"}</span></td>
             <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
-            {tab==="available"&&<td style={{fontSize:12}}>{u.starRating?starLabel(u.starRating):<span style={{color:"var(--mu)"}}>—</span>}</td>}
+            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
+            {tab==="available"&&<td style={{display:"none"}}/>}
             <td className="price">{fmt(u.salePrice)}</td>
             {tab==="sold"?<>
               <td><span className="invno">{u.invoiceNo||"—"}</span></td>
@@ -1673,7 +1673,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
         <table className="inv-tbl">
           <thead><tr><th>#</th><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
           <tbody><tr><td>1</td>
-            <td><strong>{invModal.unit?.brand} {invModal.unit?.tonnage}</strong><br/><span style={{fontSize:10,color:"#6B7280"}}>{invModal.unit?.model} · Indoor + Outdoor Unit</span></td>
+            <td><strong>{invModal.unit?.brand} {invModal.unit?.tonnage}</strong>{invModal.unit?.starRating&&<span style={{color:"#D97706",marginLeft:4}}>{starLabel(invModal.unit.starRating)}</span>}<br/><span style={{fontSize:10,color:"#6B7280"}}>{invModal.unit?.model} · Indoor + Outdoor Unit</span></td>
             <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.id}</td>
             <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.lot}</td>
             <td><strong>{fmt(invModal.unit?.totalAmount||invModal.unit?.salePrice)}</strong></td>
@@ -1737,7 +1737,7 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
           <StageBadge stage={d.stage}/>
           <div style={{marginLeft:"auto",display:"flex",gap:6}}><button className="btn bb bsm" onClick={()=>setDet(d)}>Details</button>{next&&<button className="btn bp bsm" onClick={()=>setSm({d,next})}>{next.icon} {next.label} →</button>}</div>
         </div>
-        <div style={{fontSize:11.5,color:"var(--mu2)",marginBottom:10}}>{d.unit?.brand} {d.unit?.tonnage} · {d.customer?.name||"—"} · 📞 {d.customer?.phone||"—"}</div>
+        <div style={{fontSize:11.5,color:"var(--mu2)",marginBottom:10}}>{d.unit?.brand} {d.unit?.tonnage} {d.unit?.starRating&&<span style={{color:"var(--am)"}}>{starLabel(d.unit.starRating)}</span>} · {d.customer?.name||"—"} · 📞 {d.customer?.phone||"—"}</div>
         <div style={{display:"flex",alignItems:"center"}}>
           {DISPATCH_STAGES.map((s,i)=><>
             <div key={s.id} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:56}}>
@@ -1931,7 +1931,7 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:18}}>❄️</span>
               <div>
-                <div style={{fontSize:12,fontWeight:700}}>{inv.brand} {inv.tonnage}</div>
+                <div style={{fontSize:12,fontWeight:700}}>{inv.brand} {inv.tonnage} {inv.starRating&&<span style={{color:"var(--am)",fontSize:11}}>{starLabel(inv.starRating)}</span>}</div>
                 <div style={{fontSize:10.5,color:"var(--mu2)"}}>{inv.model||"AC Unit"} · <span className="uid">{inv.id}</span></div>
               </div>
             </div>
@@ -1994,7 +1994,7 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
           <table className="inv-tbl">
             <thead><tr><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
             <tbody><tr>
-              <td><strong>{selInv.brand} {selInv.tonnage}</strong><br/><span style={{fontSize:10,color:"#6B7280"}}>{selInv.model||"AC Unit"} · Indoor + Outdoor</span></td>
+              <td><strong>{selInv.brand} {selInv.tonnage}</strong>{selInv.starRating&&<span style={{color:"#D97706",marginLeft:4}}>{starLabel(selInv.starRating)}</span>}<br/><span style={{fontSize:10,color:"#6B7280"}}>{selInv.model||"AC Unit"} · Indoor + Outdoor</span></td>
               <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.id}</td>
               <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.lot}</td>
               <td><strong>{fmt(selInv.totalAmount||selInv.salePrice)}</strong></td>
@@ -2062,7 +2062,7 @@ function Customers({ customers, units, dispatches }) {
     {det&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setDet(null)}><div className="mo lg">
       <div className="mti">👤 {det.name}</div><div className="msu">Since {det.createdDate}</div>
       <div className="rdet-grid">{[["Name",det.name],["Phone",det.phone],["Alt Phone",det.altPhone||"—"],["Email",det.email||"—"],["Address",det.address||"—"],["City/Pin",`${det.city||"—"} ${det.pincode||""}`],["GST",det.gst||"—"],["Units",(det.unitIds||[]).length]].map(([l,v],i)=><div key={i} className="rdet-cell"><div className="rdet-lbl">{l}</div><div className="rdet-val" style={{fontSize:11.5}}>{v}</div></div>)}</div>
-      {(det.unitIds||[]).length>0&&<div style={{marginTop:12}}><div style={{fontSize:9.5,fontWeight:700,color:"var(--mu2)",textTransform:"uppercase",letterSpacing:".7px",marginBottom:7}}>Purchased</div>{det.unitIds.map(id=>{ const u=units.find(x=>x.id===id); const d=dispatches.find(x=>x.unitId===id); return u?<div key={id} style={{background:"var(--bg)",borderRadius:7,padding:"8px 11px",marginBottom:5,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}><span className="uid">{u.id}</span><span style={{fontSize:11.5}}>{u.brand} {u.tonnage}</span><span className="invno">{u.invoiceNo||"—"}</span><span className="price">{fmt(u.salePrice)}</span>{d&&<StageBadge stage={d.stage}/>}{u.paymentReceived&&<span style={{fontSize:10.5,color:"var(--gr)"}}>💰 Paid</span>}</div>:null; })}</div>}
+      {(det.unitIds||[]).length>0&&<div style={{marginTop:12}}><div style={{fontSize:9.5,fontWeight:700,color:"var(--mu2)",textTransform:"uppercase",letterSpacing:".7px",marginBottom:7}}>Purchased</div>{det.unitIds.map(id=>{ const u=units.find(x=>x.id===id); const d=dispatches.find(x=>x.unitId===id); return u?<div key={id} style={{background:"var(--bg)",borderRadius:7,padding:"8px 11px",marginBottom:5,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}><span className="uid">{u.id}</span><span style={{fontSize:11.5}}>{u.brand} {u.tonnage} {u.starRating&&<span style={{color:"var(--am)",fontSize:10}}>{starLabel(u.starRating)}</span>}</span><span className="invno">{u.invoiceNo||"—"}</span><span className="price">{fmt(u.salePrice)}</span>{d&&<StageBadge stage={d.stage}/>}{u.paymentReceived&&<span style={{fontSize:10.5,color:"var(--gr)"}}>💰 Paid</span>}</div>:null; })}</div>}
       <div className="mac"><button className="btn bgh" onClick={()=>setDet(null)}>Close</button><button className="btn bwa" onClick={()=>{ const p=(det.phone||"").replace(/\D/g,""); window.open(`https://wa.me/91${p}`,"_blank"); }}>💬 WhatsApp</button></div>
     </div></div>}
   </div>;
@@ -2233,10 +2233,10 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
       let rows = [], sheetName = "Report";
       if(rpt==="sales"){
         sheetName="Sales Report";
-        rows=soldUnits.map(u=>({ "Unit ID":u.id,"Invoice":u.invoiceNo||"","Brand":u.brand,"Tonnage":u.tonnage,"Lot":u.lot||"","Warehouse":whName(u.warehouse),"Customer":u.soldTo||"","Phone":u.customerPhone||"","Sale Date":u.soldDate||"","Total":u.totalAmount||u.salePrice||0,"Booking":u.bookingAmount||0,"Remaining":u.remainingAmount||0,"Payment":u.paymentReceived?"Received":"Pending" }));
+        rows=soldUnits.map(u=>({ "Unit ID":u.id,"Invoice":u.invoiceNo||"","Brand":u.brand,"Tonnage":u.tonnage,"Stars":u.starRating?u.starRating.replace("star"," Star"):"—","Lot":u.lot||"","Warehouse":whName(u.warehouse),"Customer":u.soldTo||"","Phone":u.customerPhone||"","Sale Date":u.soldDate||"","Total":u.totalAmount||u.salePrice||0,"Booking":u.bookingAmount||0,"Remaining":u.remainingAmount||0,"Payment":u.paymentReceived?"Received":"Pending" }));
       } else if(rpt==="stock"){
         sheetName="Stock Flow";
-        rows=[...recUnits,...soldUnits].map(u=>({ "Unit ID":u.id,"Event":inRangeRec(u)?"Received":"","Brand":u.brand,"Tonnage":u.tonnage,"Status":u.status,"Date":u.receivedDate||u.soldDate||"","Warehouse":whName(u.warehouse) }));
+        rows=[...recUnits,...soldUnits].map(u=>({ "Unit ID":u.id,"Event":inRangeRec(u)?"Received":"","Brand":u.brand,"Tonnage":u.tonnage,"Stars":u.starRating?u.starRating.replace("star"," Star"):"—","Status":u.status,"Date":u.receivedDate||u.soldDate||"","Warehouse":whName(u.warehouse) }));
       } else if(rpt==="payment"){
         sheetName="Payment Report";
         rows=soldUnits.map(u=>({ "Unit ID":u.id,"Invoice":u.invoiceNo||"","Customer":u.soldTo||"","Total":u.totalAmount||u.salePrice||0,"Booking Collected":u.bookingAmount||0,"Balance Due":u.remainingAmount||0,"Status":u.paymentReceived?"Fully Paid":"Pending Balance","Sale Date":u.soldDate||"" }));
@@ -2291,7 +2291,7 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
       </div>
       <div className="card"><div className="chd"><div className="ct">Sale Transactions</div></div>
         {soldUnits.length===0?<div className="empty"><div className="et">No transactions</div></div>:<div className="tw"><table>
-          <thead><tr><th>Date</th><th>Invoice</th><th>Unit</th><th>Brand/Ton</th><th>Customer</th><th>Total</th><th>Booking</th><th>Balance</th><th>Payment</th></tr></thead>
+          <thead><tr><th>Date</th><th>Invoice</th><th>Unit</th><th>Brand/Ton/Stars</th><th>Customer</th><th>Total</th><th>Booking</th><th>Balance</th><th>Payment</th></tr></thead>
           <tbody>{soldUnits.sort((a,b)=>(b.soldDate||"").localeCompare(a.soldDate||"")).map(u=><tr key={u.id}>
             <td style={{fontSize:10.5}}>{u.soldDate}</td><td><span className="invno">{u.invoiceNo||"—"}</span></td>
             <td><span className="uid">{u.id}</span></td><td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
@@ -2380,11 +2380,11 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
       {/* DETAIL TABLE */}
       <div className="card"><div className="chd"><div><div className="ct">All Payment Details</div></div></div>
         {soldUnits.filter(u=>(u.remainingAmount||0)>0).length===0?<div className="empty"><div className="et">No pending payments in this period 🎉</div></div>:<div className="tw"><table>
-          <thead><tr><th>Invoice</th><th>Unit</th><th>Brand/Ton</th><th>Customer</th><th>Phone</th><th>Total</th><th>Collected</th><th>Balance Due</th><th>Sold Date</th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Unit</th><th>Brand/Ton/⭐</th><th>Customer</th><th>Phone</th><th>Total</th><th>Collected</th><th>Balance Due</th><th>Sold Date</th></tr></thead>
           <tbody>{soldUnits.filter(u=>(u.remainingAmount||0)>0).sort((a,b)=>(b.remainingAmount||0)-(a.remainingAmount||0)).map(u=><tr key={u.id}>
             <td><span className="invno">{u.invoiceNo||"—"}</span></td>
             <td><span className="uid">{u.id}</span></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
+            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
             <td style={{fontWeight:600}}>{u.soldTo||"—"}</td>
             <td style={{fontSize:11}}>{u.customerPhone||"—"}</td>
             <td className="price">{fmt(u.totalAmount||u.salePrice)}</td>
