@@ -74,7 +74,7 @@ const SEED_TONNAGES = [
 // Step 2: After deployment, log in and go to Master → Users to add more users
 // Step 3: Delete this comment once done
 const SEED_USERS = [
-  { id:"u1", name:"Admin User", username:"admin", password:"admin123", role:"admin", modules:ALL_MODULES.map(m=>m.id), createdDate:"2025-01-01" },
+  { id:"u1", name:"Malay", username:"malay", password:"M@l@y$", role:"admin", modules:ALL_MODULES.map(m=>m.id), createdDate:"2025-01-01" },
 ];
 const SEED_UNITS = [
   { id:"AC-001", warehouse:"wh1", lot:"LOT-2024-001", rfidIn:"RFI-001-IN", rfidOut:"RFI-001-OUT", model:"Dual Inverter", brand:"Daikin",    tonnage:"1.5 Ton", supplier:"CoolTech",  receivedDate:"2024-03-01", salePrice:18500, status:"available",    qcAttempts:1, testedBy:"Ravi Kumar", testedDate:"2024-03-02" },
