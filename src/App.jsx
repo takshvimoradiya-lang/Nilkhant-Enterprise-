@@ -11,6 +11,7 @@ const ALL_MODULES = [
   { id:"customers", label:"Customers",    icon:"👥" },
   { id:"verify",    label:"Stock Verify", icon:"📡" },
   { id:"invoices",   label:"Invoice Book",  icon:"🧾" },
+  { id:"complaints", label:"Complaints",    icon:"🔔" },
   { id:"reports",   label:"Reports",      icon:"📈", adminOnly:true },
   { id:"master",    label:"Master",       icon:"⚙️",  adminOnly:true },
 ];
@@ -74,7 +75,7 @@ const SEED_TONNAGES = [
 // Step 2: After deployment, log in and go to Master → Users to add more users
 // Step 3: Delete this comment once done
 const SEED_USERS = [
-  { id:"u1", name:"Malay", username:"malay", password:"M@l@y$", role:"admin", modules:ALL_MODULES.map(m=>m.id), createdDate:"2025-01-01" },
+  { id:"u1", name:"Admin User", username:"admin", password:"admin123", role:"admin", modules:ALL_MODULES.map(m=>m.id), createdDate:"2025-01-01" },
 ];
 const SEED_UNITS = [
   { id:"AC-001", warehouse:"wh1", lot:"LOT-2024-001", rfidIn:"RFI-001-IN", rfidOut:"RFI-001-OUT", model:"Dual Inverter", brand:"Daikin",    tonnage:"1.5 Ton", supplier:"CoolTech",  receivedDate:"2024-03-01", salePrice:18500, status:"available",    qcAttempts:1, testedBy:"Ravi Kumar", testedDate:"2024-03-02" },
@@ -1777,11 +1778,10 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
           </div>
         </div>
         <table className="inv-tbl">
-          <thead><tr><th>#</th><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
+          <thead><tr><th>#</th><th>Description</th><th>Unit ID</th><th>Amount</th></tr></thead>
           <tbody><tr><td>1</td>
             <td><strong>{invModal.unit?.brand} {invModal.unit?.tonnage}</strong>{invModal.unit?.starRating&&<span style={{color:"#D97706",marginLeft:4}}>{starLabel(invModal.unit.starRating)}</span>}<br/><span style={{fontSize:10,color:"#6B7280"}}>{invModal.unit?.model} · Indoor + Outdoor Unit</span></td>
             <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.id}</td>
-            <td style={{fontFamily:"monospace",fontSize:10.5}}>{invModal.unit?.lot}</td>
             <td><strong>{fmt(invModal.unit?.totalAmount||invModal.unit?.salePrice)}</strong></td>
           </tr></tbody>
         </table>
@@ -2098,11 +2098,10 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
             </div>
           </div>
           <table className="inv-tbl">
-            <thead><tr><th>Description</th><th>Unit ID</th><th>Lot</th><th>Amount</th></tr></thead>
+            <thead><tr><th>Description</th><th>Unit ID</th><th>Amount</th></tr></thead>
             <tbody><tr>
               <td><strong>{selInv.brand} {selInv.tonnage}</strong>{selInv.starRating&&<span style={{color:"#D97706",marginLeft:4}}>{starLabel(selInv.starRating)}</span>}<br/><span style={{fontSize:10,color:"#6B7280"}}>{selInv.model||"AC Unit"} · Indoor + Outdoor</span></td>
               <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.id}</td>
-              <td style={{fontFamily:"monospace",fontSize:10.5}}>{selInv.lot}</td>
               <td><strong>{fmt(selInv.totalAmount||selInv.salePrice)}</strong></td>
             </tr></tbody>
           </table>
@@ -2643,6 +2642,263 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
   </div>;
 }
 
+
+// ─── COMPLAINTS MODULE ────────────────────────────────────────────────────────
+const COMPLAINT_TYPES = [
+  { id:"gas_leak",       label:"Gas Leak",           icon:"💨" },
+  { id:"water_leak",     label:"Water Leaking",       icon:"💧" },
+  { id:"no_cooling",     label:"No Cooling",          icon:"❄️" },
+  { id:"noise",          label:"Unusual Noise",       icon:"🔊" },
+  { id:"not_starting",   label:"AC Not Starting",     icon:"⚡" },
+  { id:"remote",         label:"Remote Issue",        icon:"📱" },
+  { id:"fitting",        label:"Fitting Problem",     icon:"🔧" },
+  { id:"other",          label:"Other",               icon:"📝" },
+];
+
+const COMPLAINT_STAGES = [
+  { id:"registered",   label:"Registered",           icon:"🔔", color:"#FBBF24" },
+  { id:"inspected",    label:"Inspected",             icon:"🔍", color:"#38BDF8" },
+  { id:"in_progress",  label:"Work In Progress",     icon:"🔧", color:"#818CF8" },
+  { id:"resolved",     label:"Resolved",             icon:"✅", color:"#34D399" },
+];
+
+function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showToast }) {
+  const [tab, setTab]         = useState("open");       // open | resolved
+  const [search, setSearch]   = useState("");
+  const [newModal, setNewModal]   = useState(false);
+  const [detModal, setDetModal]   = useState(null);     // complaint object
+  const [updateModal, setUpdateModal] = useState(null); // complaint object
+
+  // New complaint form
+  const blankForm = {invoiceNo:"",type:"",typeOther:"",description:""};
+  const [form, setForm]   = useState(blankForm);
+  const [resolvedInvoice, setResolvedInvoice] = useState(null); // unit found by invoice
+
+  // Update form
+  const [upd, setUpd] = useState({stage:"",technicianName:"",techComment:"",resolvedDate:""});
+
+  // Lookup invoice
+  const lookupInvoice = inv => {
+    const u = units.find(u=>(u.invoiceNo||"").toUpperCase()===inv.toUpperCase());
+    setResolvedInvoice(u||null);
+  };
+
+  // Filter
+  const open     = complaints.filter(c=>c.stage!=="resolved");
+  const resolved = complaints.filter(c=>c.stage==="resolved");
+  const list     = (tab==="open"?open:resolved).filter(c=>{
+    if(!search) return true;
+    const q=search.toLowerCase();
+    return (c.invoiceNo||"").toLowerCase().includes(q)||(c.customerName||"").toLowerCase().includes(q)||(c.customerPhone||"").includes(q)||(c.type||"").toLowerCase().includes(q);
+  });
+
+  const typeLabel = t => COMPLAINT_TYPES.find(x=>x.id===t)||{label:t,icon:"📝"};
+  const stageInfo = s => COMPLAINT_STAGES.find(x=>x.id===s)||COMPLAINT_STAGES[0];
+
+  const submitNew = async () => {
+    if(!form.invoiceNo||!form.type) return;
+    await onAdd({id:genId(),...form,customerName:resolvedInvoice?.soldTo||"",customerPhone:resolvedInvoice?.customerPhone||"",unitId:resolvedInvoice?.id||""});
+    setForm(blankForm); setResolvedInvoice(null); setNewModal(false);
+  };
+
+  const openUpdate = c => { setUpd({stage:c.stage,technicianName:c.technicianName||"",techComment:c.techComment||"",resolvedDate:c.resolvedDate||""}); setUpdateModal(c); };
+  const submitUpdate = async () => {
+    const ch = {...upd}; if(upd.stage==="resolved"&&!upd.resolvedDate) ch.resolvedDate=today();
+    await onUpdate(updateModal.id, ch); setUpdateModal(null);
+  };
+
+  return <div>
+    <div className="ph">
+      <div><div className="pt">🔔 Complaints</div><div className="ps">After-sales complaints · Track from registration to resolution</div></div>
+      <div className="ph-act">
+        <button className="btn bp" onClick={()=>{setForm(blankForm);setResolvedInvoice(null);setNewModal(true);}}>+ Register Complaint</button>
+      </div>
+    </div>
+
+    {/* STATS */}
+    <div className="sg sg4" style={{marginBottom:14}}>
+      <div className="sc rd"><div className="sl">🔔 Open</div><div className="sv rd">{open.length}</div></div>
+      <div className="sc am"><div className="sl">🔍 Inspected</div><div className="sv am">{complaints.filter(c=>c.stage==="inspected").length}</div></div>
+      <div className="sc in"><div className="sl">🔧 In Progress</div><div className="sv in">{complaints.filter(c=>c.stage==="in_progress").length}</div></div>
+      <div className="sc gr"><div className="sl">✅ Resolved</div><div className="sv gr">{resolved.length}</div></div>
+    </div>
+
+    {/* TABS + SEARCH */}
+    <div className="filt">
+      <div className={`chip ${tab==="open"?"on":""}`} onClick={()=>setTab("open")} style={{color:tab==="open"?"var(--rd)":"",borderColor:tab==="open"?"rgba(248,113,113,.4)":"",background:tab==="open"?"rgba(248,113,113,.12)":""}}>🔔 Open ({open.length})</div>
+      <div className={`chip ${tab==="resolved"?"on":""}`} onClick={()=>setTab("resolved")}>✅ Resolved ({resolved.length})</div>
+      <input className="srch" placeholder="Search invoice, customer, phone, type..." value={search} onChange={e=>setSearch(e.target.value)}/>
+    </div>
+
+    {/* COMPLAINT CARDS */}
+    {list.length===0
+      ?<div className="empty"><div className="ei">🔔</div><div className="et">{tab==="open"?"No open complaints":"No resolved complaints"}</div></div>
+      :list.map(c=>{
+        const si=stageInfo(c.stage); const ti=typeLabel(c.type);
+        const unit=units.find(u=>u.id===c.unitId);
+        // Count total complaints for this invoice
+        const sameInv=complaints.filter(x=>x.invoiceNo===c.invoiceNo).length;
+        return <div key={c.id} style={{background:"var(--s1)",border:`1.5px solid ${c.stage==="resolved"?"var(--b1)":"rgba(248,113,113,.2)"}`,borderRadius:10,padding:14,marginBottom:10}}>
+          {/* TOP ROW */}
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.25)",borderRadius:8,padding:"6px 11px",textAlign:"center",minWidth:80}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#F87171",fontWeight:700}}>{c.invoiceNo}</div>
+                <div style={{fontSize:9,color:"var(--mu)",marginTop:2}}>{c.registeredDate}</div>
+              </div>
+              <div>
+                <div style={{fontWeight:800,fontSize:13}}>{ti.icon} {ti.id==="other"?c.typeOther||"Other":ti.label}</div>
+                <div style={{fontSize:11,color:"var(--mu2)",marginTop:3}}>
+                  {c.customerName&&<span>👤 {c.customerName}</span>}
+                  {c.customerPhone&&<span style={{marginLeft:8}}>📞 {c.customerPhone}</span>}
+                </div>
+                {sameInv>1&&<div style={{fontSize:10,color:"var(--am)",marginTop:3}}>⚠️ {sameInv} complaints on this invoice</div>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{background:`${si.color}18`,color:si.color,border:`1px solid ${si.color}44`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{si.icon} {si.label}</span>
+              <button className="btn bb bsm" onClick={()=>setDetModal(c)}>Details</button>
+              {c.stage!=="resolved"&&<button className="btn bp bsm" onClick={()=>openUpdate(c)}>Update →</button>}
+            </div>
+          </div>
+
+          {/* UNIT INFO */}
+          {unit&&<div style={{display:"flex",gap:10,padding:"8px 11px",background:"rgba(255,255,255,.02)",borderRadius:7,marginBottom:8,flexWrap:"wrap",fontSize:11,color:"var(--mu2)"}}>
+            <span>❄️ <b style={{color:"var(--tx)"}}>{unit.brand} {unit.tonnage}</b></span>
+            {unit.starRating&&<span style={{color:"var(--am)"}}>{starLabel(unit.starRating)}</span>}
+            <span className="uid">{unit.id}</span>
+            <span className="lot">{unit.lot}</span>
+          </div>}
+
+          {/* DESCRIPTION + TECH COMMENT */}
+          {c.description&&<div style={{fontSize:11.5,color:"var(--mu2)",marginBottom:6,lineHeight:1.5}}>📝 {c.description}</div>}
+          {c.techComment&&<div style={{fontSize:11.5,color:"var(--ac2)",padding:"7px 10px",background:"rgba(129,140,248,.06)",borderRadius:6,borderLeft:"3px solid var(--ac2)"}}>🔬 Tech note: {c.techComment}</div>}
+          {c.stage==="resolved"&&c.resolvedDate&&<div style={{fontSize:10.5,color:"var(--gr)",marginTop:6}}>✅ Resolved on {c.resolvedDate}{c.technicianName?" by "+c.technicianName:""}</div>}
+
+          {/* STAGE PROGRESS */}
+          <div style={{display:"flex",alignItems:"center",marginTop:10}}>
+            {COMPLAINT_STAGES.map((s,i)=><>
+              <div key={s.id} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:60}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:COMPLAINT_STAGES.findIndex(x=>x.id===c.stage)>=i?s.color:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,marginBottom:2,transition:"all .3s"}}>{COMPLAINT_STAGES.findIndex(x=>x.id===c.stage)>=i?s.icon:"·"}</div>
+                <div style={{fontSize:8,color:c.stage===s.id?"var(--tx)":"var(--mu)",textAlign:"center",lineHeight:1.2}}>{s.label}</div>
+              </div>
+              {i<COMPLAINT_STAGES.length-1&&<div key={"l"+i} style={{flex:1,height:2,background:COMPLAINT_STAGES.findIndex(x=>x.id===c.stage)>i?s.color:"rgba(255,255,255,.06)",transition:"background .3s",marginBottom:12}}/>}
+            </>)}
+          </div>
+        </div>;
+      })
+    }
+
+    {/* REGISTER COMPLAINT MODAL */}
+    {newModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setNewModal(false)}><div className="mo">
+      <div className="mti">🔔 Register Complaint</div>
+      <div className="msu">Multiple complaints can be registered against the same invoice</div>
+
+      {/* Invoice lookup */}
+      <div className="fi" style={{marginBottom:12}}>
+        <label className="fl">Invoice Number *</label>
+        <div style={{display:"flex",gap:8}}>
+          <input className="fn" value={form.invoiceNo} style={{flex:1}} placeholder="e.g. INV-0001"
+            onChange={e=>{ const v=e.target.value.toUpperCase(); setForm(p=>({...p,invoiceNo:v})); if(v.length>=7)lookupInvoice(v); else setResolvedInvoice(null); }}/>
+        </div>
+        {resolvedInvoice&&<div style={{marginTop:8,padding:"8px 11px",background:"rgba(52,211,153,.08)",border:"1px solid rgba(52,211,153,.2)",borderRadius:7,fontSize:11.5}}>
+          ✅ Found: <b>{resolvedInvoice.brand} {resolvedInvoice.tonnage}</b> {resolvedInvoice.starRating&&starLabel(resolvedInvoice.starRating)} · <b>{resolvedInvoice.soldTo}</b> · 📞 {resolvedInvoice.customerPhone}
+          <div style={{fontSize:10,color:"var(--mu2)",marginTop:3}}>{resolvedInvoice.id} · sold {resolvedInvoice.soldDate}</div>
+          {complaints.filter(x=>x.invoiceNo===form.invoiceNo).length>0&&<div style={{color:"var(--am)",marginTop:4}}>⚠️ {complaints.filter(x=>x.invoiceNo===form.invoiceNo).length} previous complaint(s) on this invoice</div>}
+        </div>}
+        {form.invoiceNo.length>=7&&!resolvedInvoice&&<div style={{marginTop:6,fontSize:11,color:"var(--am)"}}>⚠️ Invoice not found — you can still register manually</div>}
+      </div>
+
+      {/* Complaint type */}
+      <div className="fi" style={{marginBottom:12}}>
+        <label className="fl">Complaint Type *</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          {COMPLAINT_TYPES.map(t=><div key={t.id}
+            style={{padding:"6px 12px",borderRadius:7,border:`1.5px solid ${form.type===t.id?"var(--ac)":"var(--b1)"}`,background:form.type===t.id?"rgba(56,189,248,.1)":"rgba(255,255,255,.02)",cursor:"pointer",fontSize:12,color:form.type===t.id?"var(--ac)":"var(--mu2)",transition:"all .13s"}}
+            onClick={()=>setForm(p=>({...p,type:t.id}))}>
+            {t.icon} {t.label}
+          </div>)}
+        </div>
+        {form.type==="other"&&<input className="fn" placeholder="Describe the issue..." value={form.typeOther} onChange={e=>setForm(p=>({...p,typeOther:e.target.value}))}/>}
+      </div>
+
+      {/* Description */}
+      <div className="fi" style={{marginBottom:14}}>
+        <label className="fl">Description (optional)</label>
+        <textarea className="fn" style={{minHeight:80}} placeholder="Customer complaint details..." value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
+      </div>
+
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setNewModal(false)}>Cancel</button>
+        <button className="btn bp" onClick={submitNew} disabled={!form.invoiceNo||!form.type}>Register →</button>
+      </div>
+    </div></div>}
+
+    {/* UPDATE COMPLAINT MODAL */}
+    {updateModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setUpdateModal(null)}><div className="mo">
+      <div className="mti">🔧 Update Complaint</div>
+      <div className="msu"><span className="invno">{updateModal.invoiceNo}</span> · {typeLabel(updateModal.type).icon} {updateModal.type==="other"?updateModal.typeOther:typeLabel(updateModal.type).label}</div>
+
+      <div className="fi" style={{marginBottom:12}}>
+        <label className="fl">Update Stage</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {COMPLAINT_STAGES.map(s=><div key={s.id}
+            style={{padding:"7px 14px",borderRadius:7,border:`1.5px solid ${upd.stage===s.id?s.color:"var(--b1)"}`,background:upd.stage===s.id?`${s.color}18`:"rgba(255,255,255,.02)",cursor:"pointer",fontSize:12,color:upd.stage===s.id?s.color:"var(--mu2)",transition:"all .13s",fontWeight:upd.stage===s.id?700:400}}
+            onClick={()=>setUpd(p=>({...p,stage:s.id}))}>
+            {s.icon} {s.label}
+          </div>)}
+        </div>
+      </div>
+
+      <div className="fg2">
+        <div className="fi"><label className="fl">Technician Name</label><input className="fn" value={upd.technicianName} onChange={e=>setUpd(p=>({...p,technicianName:e.target.value}))} placeholder="Who inspected"/></div>
+        {upd.stage==="resolved"&&<div className="fi"><label className="fl">Resolved Date</label><input type="date" className="fn" value={upd.resolvedDate||today()} onChange={e=>setUpd(p=>({...p,resolvedDate:e.target.value}))}/></div>}
+      </div>
+      <div className="fi" style={{marginBottom:14}}>
+        <label className="fl">Technician Comment</label>
+        <textarea className="fn" style={{minHeight:90}} placeholder="Inspection findings, work done, parts replaced..." value={upd.techComment} onChange={e=>setUpd(p=>({...p,techComment:e.target.value}))}/>
+      </div>
+
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setUpdateModal(null)}>Cancel</button>
+        <button className="btn bp" onClick={submitUpdate}>Save Update →</button>
+      </div>
+    </div></div>}
+
+    {/* DETAIL MODAL */}
+    {detModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setDetModal(null)}><div className="mo lg">
+      <div className="mti">🔔 Complaint Details</div>
+      <div className="msu"><span className="invno">{detModal.invoiceNo}</span> · registered {detModal.registeredDate}</div>
+      <div className="rdet-grid">
+        {[
+          ["Type",      typeLabel(detModal.type).icon+" "+(detModal.type==="other"?detModal.typeOther:typeLabel(detModal.type).label)],
+          ["Stage",     <span style={{color:stageInfo(detModal.stage).color,fontWeight:700}}>{stageInfo(detModal.stage).icon} {stageInfo(detModal.stage).label}</span>],
+          ["Customer",  detModal.customerName||"—"],
+          ["Phone",     detModal.customerPhone||"—"],
+          ["Unit ID",   detModal.unitId?<span className="uid">{detModal.unitId}</span>:"—"],
+          ["Technician",detModal.technicianName||"—"],
+          ["Resolved",  detModal.resolvedDate||"—"],
+        ].map(([l,v],i)=><div key={i} className="rdet-cell"><div className="rdet-lbl">{l}</div><div className="rdet-val">{v}</div></div>)}
+      </div>
+      {detModal.description&&<div style={{marginTop:12,padding:"10px 12px",background:"rgba(255,255,255,.03)",borderRadius:7,fontSize:12,lineHeight:1.6}}>📝 {detModal.description}</div>}
+      {detModal.techComment&&<div style={{marginTop:10,padding:"10px 12px",background:"rgba(129,140,248,.06)",borderLeft:"3px solid var(--ac2)",borderRadius:7,fontSize:12,lineHeight:1.6}}>🔬 {detModal.techComment}</div>}
+      {/* Previous complaints for same invoice */}
+      {complaints.filter(x=>x.invoiceNo===detModal.invoiceNo&&x.id!==detModal.id).length>0&&<div style={{marginTop:14}}>
+        <div style={{fontSize:10,fontWeight:700,color:"var(--mu2)",textTransform:"uppercase",letterSpacing:".7px",marginBottom:8}}>Other complaints on this invoice</div>
+        {complaints.filter(x=>x.invoiceNo===detModal.invoiceNo&&x.id!==detModal.id).map(c=><div key={c.id} style={{background:"var(--bg)",borderRadius:7,padding:"8px 11px",marginBottom:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{fontSize:11}}>{typeLabel(c.type).icon} {c.type==="other"?c.typeOther:typeLabel(c.type).label}</span>
+          <span style={{fontSize:10,color:stageInfo(c.stage).color}}>{stageInfo(c.stage).label}</span>
+          <span style={{fontSize:10,color:"var(--mu)"}}>{c.registeredDate}</span>
+        </div>)}
+      </div>}
+      <div className="mac">
+        <button className="btn bgh" onClick={()=>setDetModal(null)}>Close</button>
+        {detModal.stage!=="resolved"&&<button className="btn bp" onClick={()=>{setDetModal(null);openUpdate(detModal);}}>Update →</button>}
+      </div>
+    </div></div>}
+  </div>;
+}
+
 // ─── BARCODE SCANNER (Camera) ─────────────────────────────────────────────────
 // Uses jsQR loaded from CDN for QR/barcode scanning via phone camera
 function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
@@ -2813,7 +3069,8 @@ export default function App() {
   const [tonnages,   setTonnages]   = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [customers,  setCustomers]  = useState([]);
-  const [dispatches, setDispatches] = useState([]);
+  const [dispatches,  setDispatches]  = useState([]);
+  const [complaints,  setComplaints]  = useState([]);
   const [invoiceTemplate, setInvoiceTemplate] = useState(()=>{ try{ const s=localStorage.getItem("cs_inv_tpl"); return s?JSON.parse(s):null; }catch{ return null; } });
   const [page,       setPage]       = useState("dashboard");
   const [toast,      setToast]      = useState(null);
@@ -2871,7 +3128,7 @@ export default function App() {
   async function loadAll() {
     setLoading(true); setDbError("");
     try {
-      const [wh,lo,br,to,us,un,cu,di] = await Promise.all([
+      const [wh,lo,br,to,us,un,cu,di,cm] = await Promise.all([
         supabase.from("warehouses").select("*").order("created_date"),
         supabase.from("lots").select("*").order("created_date"),
         supabase.from("brands").select("*").order("created_date"),
@@ -2880,6 +3137,7 @@ export default function App() {
         supabase.from("units").select("*"),
         supabase.from("customers").select("*"),
         supabase.from("dispatches").select("*"),
+        supabase.from("complaints").select("*").order("created_at",{ascending:false}),
       ]);
       if(wh.error||us.error||un.error) throw new Error(wh.error?.message||us.error?.message||un.error?.message||"DB error");
       if(wh.data) setWarehouses(wh.data.map(toWH));
@@ -2890,6 +3148,7 @@ export default function App() {
       if(un.data) setUnits(un.data.map(toUnit));
       if(cu.data) setCustomers(cu.data.map(toCustomer));
       if(di.data) setDispatches(di.data.map(toDispatch));
+      if(cm.data) setComplaints(cm.data.map(r=>({id:r.id,invoiceNo:r.invoice_no||"",unitId:r.unit_id||"",customerName:r.customer_name||"",customerPhone:r.customer_phone||"",type:r.type||"",typeOther:r.type_other||"",description:r.description||"",stage:r.stage||"registered",technicianName:r.technician_name||"",techComment:r.tech_comment||"",resolvedDate:r.resolved_date||"",createdAt:r.created_at||"",registeredDate:r.registered_date||today()})));
       if(un.data){ const nums=un.data.map(u=>parseInt((u.invoice_no||"").replace("INV-",""))||0); if(nums.length>0)setInvCtr(Math.max(...nums)); }
     } catch(e) {
       setDbError("Could not connect to database: "+e.message);
@@ -2908,6 +3167,7 @@ export default function App() {
       .on("postgres_changes",{event:"*",schema:"public",table:"brands"},       p=>rtChange(p,"brands"))
       .on("postgres_changes",{event:"*",schema:"public",table:"tonnages"},     p=>rtChange(p,"tonnages"))
       .on("postgres_changes",{event:"*",schema:"public",table:"app_users"},    p=>rtChange(p,"app_users"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"complaints"},   p=>rtChangeComplaints(p))
       .subscribe((status) => {
         if(status==="SUBSCRIBED") console.log("✅ Realtime connected");
         if(status==="CHANNEL_ERROR") console.warn("⚠️ Realtime error - check anon key has realtime enabled");
@@ -2924,7 +3184,32 @@ export default function App() {
     if(eventType==="DELETE") s(p=>p.filter(x=>x.id!==o.id));
   }
 
+  function rtChangeComplaints({ eventType, new:n, old:o }) {
+    const conv = r=>({id:r.id,invoiceNo:r.invoice_no||"",unitId:r.unit_id||"",customerName:r.customer_name||"",customerPhone:r.customer_phone||"",type:r.type||"",typeOther:r.type_other||"",description:r.description||"",stage:r.stage||"registered",technicianName:r.technician_name||"",techComment:r.tech_comment||"",resolvedDate:r.resolved_date||"",createdAt:r.created_at||"",registeredDate:r.registered_date||today()});
+    if(eventType==="INSERT") setComplaints(p=>[conv(n),...p.filter(x=>x.id!==n.id)]);
+    if(eventType==="UPDATE") setComplaints(p=>p.map(x=>x.id===n.id?conv(n):x));
+    if(eventType==="DELETE") setComplaints(p=>p.filter(x=>x.id!==o.id));
+  }
+
   // ── DB WRITE ACTIONS ───────────────────────────────────────────────────────
+  const addComplaint = async c => {
+    const row = {id:c.id, invoice_no:c.invoiceNo, unit_id:c.unitId||"", customer_name:c.customerName||"", customer_phone:c.customerPhone||"", type:c.type, type_other:c.typeOther||"", description:c.description||"", stage:"registered", technician_name:"", tech_comment:"", resolved_date:"", registered_date:today()};
+    const {error} = await supabase.from("complaints").insert(row);
+    if(error) showToast("Error: "+error.message,"error");
+    else showToast("Complaint registered 🔔");
+  };
+  const updateComplaint = async (id, ch) => {
+    const dbCh = {};
+    if(ch.stage!==undefined)            dbCh.stage=ch.stage;
+    if(ch.technicianName!==undefined)   dbCh.technician_name=ch.technicianName;
+    if(ch.techComment!==undefined)      dbCh.tech_comment=ch.techComment;
+    if(ch.resolvedDate!==undefined)     dbCh.resolved_date=ch.resolvedDate;
+    if(ch.description!==undefined)      dbCh.description=ch.description;
+    const {error} = await supabase.from("complaints").update(dbCh).eq("id",id);
+    if(error) showToast("Error: "+error.message,"error");
+    else if(ch.stage==="resolved") showToast("Complaint resolved ✅");
+  };
+
   const bulkAddUnits = async rows => {
     // Insert all rows one by one to Supabase
     let maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace("AC-",""))||0),0);
@@ -3089,6 +3374,7 @@ export default function App() {
         {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
         {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
         {page==="invoices"   && <InvoiceBook units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} showToast={showToast}/>}
+        {page==="complaints" && <Complaints complaints={complaints} units={units} customers={customers} onAdd={addComplaint} onUpdate={updateComplaint} user={user} showToast={showToast}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
         {page==="verify"    && <StockVerify units={units} warehouses={warehouses} user={user} onVerificationComplete={onVerif} openCamera={openCamera}/>}
         {page==="reports"   && <Reports units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} lots={lots}/>}
