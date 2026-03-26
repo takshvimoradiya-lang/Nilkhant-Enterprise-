@@ -2303,7 +2303,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
 
 
 // ─── REPORTS (Admin only) ────────────────────────────────────────────────────
-function Reports({ units, customers, dispatches, warehouses, lots }) {
+function Reports({ units, customers, dispatches, warehouses, lots, complaints=[] }) {
   const [rpt, setRpt] = useState("sales");
   const [from, setFrom] = useState(() => { const d=new Date(); d.setDate(1); return d.toISOString().split("T")[0]; });
   const [to,   setTo]   = useState(() => new Date().toISOString().split("T")[0]);
@@ -2360,7 +2360,7 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
         rows=Object.values(techMap).map(t=>({ "Technician":t.name,"Units Tested":t.passed+t.failed,"Passed":t.passed,"Failed/Repair":t.failed,"Pass Rate":t.passed+t.failed>0?Math.round(t.passed/(t.passed+t.failed)*100)+"%":"—" }));
       } else if(rpt==="lot"){
         sheetName="Lot Report";
-        rows=lots.map(l=>{ const lu=units.filter(u=>u.lot===l.number); return { "Lot":l.number,"Received Date":l.createdDate||"","Total Units":lu.length,"Pending QC":lu.filter(u=>u.status==="pending_qc").length,"Available":lu.filter(u=>u.status==="available").length,"Under Repair":lu.filter(u=>u.status==="under_repair").length,"Sold":lu.filter(u=>u.status==="sold").length,"Stock Value":lu.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0),"Revenue":lu.filter(u=>u.status==="sold").reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0) }; });
+        rows=lots.map(l=>{ const lu=units.filter(u=>u.lot===l.number); return { "Lot":l.number,"Received Date":l.createdDate||"","Total Units":lu.length,"Pending QC":lu.filter(u=>u.status==="pending_qc").length,"Available":lu.filter(u=>u.status==="available").length,"Under Repair":lu.filter(u=>u.status==="under_repair").length,"Sold":lu.filter(u=>u.status==="sold").length,"Stock Value":lu.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0),"Revenue":lu.filter(u=>u.status==="sold").reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0),"Complaints":complaints.filter(c=>{const inv=lu.filter(u=>u.invoiceNo).map(u=>u.invoiceNo);return inv.includes(c.invoiceNo);}).length,"Open Complaints":complaints.filter(c=>{const inv=lu.filter(u=>u.invoiceNo).map(u=>u.invoiceNo);return inv.includes(c.invoiceNo)&&c.stage!=="resolved";}).length }; });
       }
       window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rows.length?rows:[{"Message":"No data for this period"}]), sheetName);
       window.XLSX.writeFile(wb, `Nilkhant_${sheetName.replace(/ /g,"_")}_${from}_to_${to}.xlsx`);
@@ -2613,7 +2613,7 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
       {lots.length===0?<div className="empty"><div className="ei">📋</div><div className="et">No lots created yet</div></div>:
       <div className="card"><div className="chd"><div className="ct">Lot Performance</div></div>
         <div className="tw"><table>
-          <thead><tr><th>Lot</th><th>Created</th><th>Total Units</th><th>Pending QC</th><th>Available</th><th>Repair</th><th>Sold</th><th>Stock Value</th><th>Revenue</th><th>Sell-through</th></tr></thead>
+          <thead><tr><th>Lot</th><th>Created</th><th>Total Units</th><th>Pending QC</th><th>Available</th><th>Repair</th><th>Sold</th><th>🔔 Complaints</th><th>Stock Value</th><th>Revenue</th><th>Sell-through</th></tr></thead>
           <tbody>{lots.map(l=>{
             const lu=units.filter(u=>u.lot===l.number);
             const avail=lu.filter(u=>u.status==="available").length;
@@ -2623,6 +2623,10 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
             const stockVal=lu.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0);
             const rev=lu.filter(u=>u.status==="sold").reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
             const sellThrough=lu.length>0?Math.round(sold/lu.length*100):0;
+            // Count complaints for units in this lot
+            const lotInvoiceNos=lu.filter(u=>u.invoiceNo).map(u=>u.invoiceNo);
+            const compCount=complaints.filter(c=>lotInvoiceNos.includes(c.invoiceNo)).length;
+            const openComp=complaints.filter(c=>lotInvoiceNos.includes(c.invoiceNo)&&c.stage!=="resolved").length;
             return <tr key={l.id}>
               <td><span className="lot">{l.number}</span></td>
               <td style={{fontSize:10.5}}>{l.createdDate||"—"}</td>
@@ -2631,6 +2635,16 @@ function Reports({ units, customers, dispatches, warehouses, lots }) {
               <td style={{color:"var(--gr)",fontWeight:600}}>{avail}</td>
               <td style={{color:"var(--rd)"}}>{rep}</td>
               <td style={{color:"var(--gy)",fontWeight:600}}>{sold}</td>
+              <td style={{textAlign:"center"}}>
+                {compCount===0
+                  ?<span style={{color:"var(--mu)",fontSize:10.5}}>—</span>
+                  :<div>
+                    <span style={{fontWeight:700,color:openComp>0?"var(--rd)":"var(--gr)"}}>{compCount}</span>
+                    {openComp>0&&<div style={{fontSize:9,color:"var(--am)",marginTop:1}}>{openComp} open</div>}
+                    {openComp===0&&compCount>0&&<div style={{fontSize:9,color:"var(--gr)",marginTop:1}}>all resolved</div>}
+                  </div>
+                }
+              </td>
               <td className="price">{fmt(stockVal)}</td>
               <td style={{color:"var(--gr)",fontWeight:700}}>{fmt(rev)}</td>
               <td><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:50,height:5,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${sellThrough}%`,height:"100%",background:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}>{sellThrough}%</span></div></td>
@@ -3377,7 +3391,7 @@ export default function App() {
         {page==="complaints" && <Complaints complaints={complaints} units={units} customers={customers} onAdd={addComplaint} onUpdate={updateComplaint} user={user} showToast={showToast}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
         {page==="verify"    && <StockVerify units={units} warehouses={warehouses} user={user} onVerificationComplete={onVerif} openCamera={openCamera}/>}
-        {page==="reports"   && <Reports units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} lots={lots}/>}
+        {page==="reports"   && <Reports units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} lots={lots} complaints={complaints}/>}
         {page==="master"    && <MasterPage lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} users={users} invoiceTemplate={invoiceTemplate} onLotsChange={setLotsDB} onBrandsChange={setBrandsDB} onTonnagesChange={setTonnagesDB} onWHChange={setWHDB} onUsersChange={setUsersDB} onInvoiceTemplateChange={handleInvoiceTemplateChange} showToast={showToast}/>}
       </main>
 
