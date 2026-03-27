@@ -1126,9 +1126,37 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
   const [showUpload, setShowUpload]=useState(false);
   const [showTx, setShowTx]=useState(null); // unit to transfer
   const [txWh, setTxWh]=useState("");
-  const [form, setForm]=useState({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:""});
+  const [form, setForm]=useState({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:"",customId:""});
+  const [rfidError, setRfidError] = useState(""); // duplicate RFID warning
   const f=v=>setForm(p=>({...p,...v}));
-  const submit=()=>{ if(!form.brand||!form.tonnage||!form.lot||!form.salePrice||!form.warehouse)return; onAdd({id:"AC-"+String(units.length+1).padStart(3,"0"),...form,salePrice:Number(form.salePrice),status:"pending_qc",qcAttempts:0}); setShowForm(false); setForm({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:""}); };
+
+  // Check if an RFID tag is already assigned to another unit
+  const checkRfid = (tag, field) => {
+    if(!tag) { setRfidError(""); return; }
+    const dup = units.find(u => {
+      const t = tag.trim().toUpperCase();
+      return (u.rfidIn||"").toUpperCase()===t || (u.rfidOut||"").toUpperCase()===t;
+    });
+    if(dup) setRfidError(`⚠️ Tag "${tag}" already assigned to ${dup.id} (${dup.brand} ${dup.tonnage}) as ${(dup.rfidIn||"").toUpperCase()===tag.trim().toUpperCase()?"Indoor":"Outdoor"} tag`);
+    else setRfidError("");
+  };
+
+  const submit=()=>{
+    if(!form.brand||!form.tonnage||!form.lot||!form.salePrice||!form.warehouse) return;
+    if(rfidError) return; // block if duplicate RFID
+    // Double-check both tags on submit
+    const tags = [form.rfidIn, form.rfidOut].filter(Boolean).map(t=>t.trim().toUpperCase());
+    const dupCheck = units.find(u => tags.includes((u.rfidIn||"").toUpperCase()) || tags.includes((u.rfidOut||"").toUpperCase()));
+    if(dupCheck) { setRfidError(`⚠️ RFID tag already used on ${dupCheck.id}`); return; }
+    const maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace(/[^0-9]/g,""))||0),0);
+    const autoId = "AC-"+String(maxNum+1).padStart(3,"0");
+    const finalId = form.customId && !units.find(u=>u.id===form.customId) ? form.customId : autoId;
+    if(form.customId && units.find(u=>u.id===form.customId)) { setRfidError("⚠️ Unit ID "+form.customId+" already exists. Use a different ID or leave blank for auto."); return; }
+    onAdd({...form,id:finalId,salePrice:Number(form.salePrice),status:"pending_qc",qcAttempts:0});
+    setShowForm(false);
+    setRfidError("");
+    setForm({warehouse:"",lot:"",brand:"",tonnage:"",model:"",supplier:"",receivedDate:today(),salePrice:"",rfidIn:"",rfidOut:"",notes:"",starRating:"",customId:""});
+  };
   const lotGroups={};
   units.forEach(u=>{ if(!lotGroups[u.lot])lotGroups[u.lot]={units:[],pend:0,avail:0,rep:0,sold:0,val:0}; lotGroups[u.lot].units.push(u); lotGroups[u.lot][u.status==="pending_qc"?"pend":u.status==="available"?"avail":u.status==="under_repair"?"rep":"sold"]++; if(u.salePrice&&u.status==="available")lotGroups[u.lot].val+=u.salePrice; });
 
@@ -1178,14 +1206,16 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
         <div className="fi"><label className="fl">Tonnage *</label><select className="fs" value={form.tonnage} onChange={e=>f({tonnage:e.target.value})}><option value="">Select</option>{tonnages.map(t=><option key={t.id}>{t.value}</option>)}</select></div>
         <div className="fi"><label className="fl">Star Rating</label><select className="fs" value={form.starRating} onChange={e=>f({starRating:e.target.value})}><option value="">Not specified</option>{STAR_RATINGS.map(s=><option key={s.id} value={s.id}>{starLabel(s.id)} {s.label}</option>)}</select></div>
         <div className="fi"><label className="fl">Model</label><input className="fn" value={form.model} onChange={e=>f({model:e.target.value})} placeholder="Optional"/></div>
+        <div className="fi"><label className="fl">AC Unit ID <span style={{fontWeight:400,color:"var(--mu2)"}}>— auto if blank</span></label><input className="fn" value={form.customId} onChange={e=>f({customId:e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"")})} placeholder="e.g. AC-011 or leave blank"/></div>
         <div className="fi"><label className="fl">Supplier</label><input className="fn" value={form.supplier} onChange={e=>f({supplier:e.target.value})}/></div>
         <div className="fi"><label className="fl">Sale Price ₹ *</label><input type="number" className="fn" value={form.salePrice} onChange={e=>f({salePrice:e.target.value})}/></div>
         <div className="fi"><label className="fl">Received Date</label><input type="date" className="fn" value={form.receivedDate} onChange={e=>f({receivedDate:e.target.value})}/></div>
-        <div className="fi"><label className="fl">RFID Indoor</label><input className="fn" value={form.rfidIn} onChange={e=>f({rfidIn:e.target.value})} placeholder="Optional"/></div>
-        <div className="fi"><label className="fl">RFID Outdoor</label><input className="fn" value={form.rfidOut} onChange={e=>f({rfidOut:e.target.value})} placeholder="Optional"/></div>
+        <div className="fi"><label className="fl">RFID Indoor</label><input className="fn" value={form.rfidIn} onChange={e=>{f({rfidIn:e.target.value});checkRfid(e.target.value,"in");}} placeholder="Scan or type tag ID"/></div>
+        <div className="fi"><label className="fl">RFID Outdoor</label><input className="fn" value={form.rfidOut} onChange={e=>{f({rfidOut:e.target.value});checkRfid(e.target.value,"out");}} placeholder="Scan or type tag ID"/></div>
         <div className="fi full"><label className="fl">Notes</label><input className="fn" value={form.notes} onChange={e=>f({notes:e.target.value})}/></div>
       </div>
-      <div className="mac"><button className="btn bgh" onClick={()=>setShowForm(false)}>Cancel</button><button className="btn bp" onClick={submit}>Register →</button></div>
+      {rfidError&&<div style={{background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.3)",borderRadius:7,padding:"9px 12px",color:"#FECACA",fontSize:12,marginBottom:8}}>❌ {rfidError}<br/><span style={{fontSize:10.5,color:"var(--mu2)",marginTop:3,display:"block"}}>Please use a different tag. Each RFID tag can only be assigned to one unit.</span></div>}
+      <div className="mac"><button className="btn bgh" onClick={()=>{setShowForm(false);setRfidError("");}}>Cancel</button><button className="btn bp" onClick={submit} disabled={!!rfidError} style={{opacity:rfidError?0.5:1}}>Register →</button></div>
     </div></div>}
 
     {/* EXCEL IMPORT MODAL */}
@@ -1874,12 +1904,14 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
 
 
 // ─── INVOICE BOOK ────────────────────────────────────────────────────────────
-function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showToast }) {
+function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showToast, complaints=[], onAddComplaint }) {
   const [search, setSearch] = useState("");
   const [filterPay, setFilterPay] = useState("all"); // all | paid | pending
   const [sortBy, setSortBy] = useState("date_desc");
   const [selInv, setSelInv] = useState(null); // full invoice view
   const [payModal, setPayModal] = useState(null);
+  const [viewMode, setViewMode] = useState("list"); // list | detail
+  const [regComplaint, setRegComplaint] = useState(null); // invoice to pre-fill complaint
 
   const soldUnits = units.filter(u => u.status === "sold" && u.invoiceNo);
 
@@ -1972,6 +2004,12 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
       </div>
     </div>
 
+    {/* VIEW TOGGLE */}
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      <button className={`btn bsm ${viewMode==="list"?"bp":"bgh"}`} onClick={()=>setViewMode("list")}>☰ List</button>
+      <button className={`btn bsm ${viewMode==="detail"?"bp":"bgh"}`} onClick={()=>setViewMode("detail")}>🃏 Detail</button>
+    </div>
+
     {/* SUMMARY STATS */}
     <div className="sg sg3" style={{marginBottom:14}}>
       <div className="sc gy"><div className="sl">Total Invoices</div><div className="sv gy">{filtered.length}</div><div className="sh">of {invoices.length} total</div></div>
@@ -1993,12 +2031,43 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
       <input className="srch" placeholder="Search invoice, customer, phone, unit..." value={search} onChange={e=>setSearch(e.target.value)}/>
     </div>
 
-    {/* INVOICE CARDS */}
-    {sorted.length===0
+    {/* LIST VIEW */}
+    {viewMode==="list"&&<div className="card">
+      {sorted.length===0?<div className="empty"><div className="ei">🧾</div><div className="et">No invoices found</div></div>:
+      <div className="tw"><table>
+        <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Phone</th><th>Product</th><th>Total</th><th>Balance</th><th>Payment</th><th>Delivery</th><th>Actions</th></tr></thead>
+        <tbody>{sorted.map(inv=>{ const ds=dispStage(inv); const hasBalance=(inv.remainingAmount||0)>0; const cmpCount=complaints.filter(c=>c.invoiceNo===inv.invoiceNo).length;
+          return <tr key={inv.id} style={{background:hasBalance?"rgba(251,191,36,.03)":""}}>
+            <td>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <span className="invno">{inv.invoiceNo}</span>
+                <button title="Register Complaint" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:2,color:cmpCount>0?"var(--rd)":"var(--mu2)"}} onClick={()=>setRegComplaint(inv)}>🔔{cmpCount>0&&<span style={{fontSize:9,marginLeft:2,color:"var(--rd)"}}>{cmpCount}</span>}</button>
+              </div>
+            </td>
+            <td style={{fontSize:10.5,color:"var(--mu2)"}}>{inv.soldDate||"—"}</td>
+            <td style={{fontWeight:600,fontSize:12}}>{inv.soldTo||"—"}</td>
+            <td style={{fontSize:11}}>{inv.customerPhone||"—"}</td>
+            <td><b style={{fontSize:11}}>{inv.brand} {inv.tonnage}</b>{inv.starRating&&<span style={{color:"var(--am)",fontSize:10}}> {starLabel(inv.starRating)}</span>}<br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{inv.id}</span></td>
+            <td className="price">{fmt(inv.totalAmount||inv.salePrice)}</td>
+            <td style={{color:hasBalance?"var(--am)":"var(--gr)",fontWeight:600}}>{hasBalance?fmt(inv.remainingAmount):"✅ Paid"}</td>
+            <td>{inv.paymentReceived?<span style={{color:"var(--gr)",fontSize:10.5}}>✅ Paid</span>:<span style={{color:"var(--am)",fontSize:10.5}}>⏳ Pending</span>}</td>
+            <td><span style={{fontSize:10,color:ds.color}}>{ds.icon} {ds.label}</span></td>
+            <td><div style={{display:"flex",gap:4}}>
+              <button className="btn bb bsm" onClick={()=>setSelInv(inv)}>View</button>
+              {!inv.paymentReceived&&<button className="btn bg2 bsm" onClick={()=>setPayModal(inv)}>💰</button>}
+            </div></td>
+          </tr>;
+        })}</tbody>
+      </table></div>}
+    </div>}
+
+    {/* DETAIL (CARD) VIEW */}
+    {viewMode==="detail"&&(sorted.length===0
       ?<div className="empty"><div className="ei">🧾</div><div className="et">No invoices found</div></div>
       :sorted.map(inv => {
         const ds = dispStage(inv);
         const hasBalance = (inv.remainingAmount||0) > 0;
+        const cmpCount = complaints.filter(c=>c.invoiceNo===inv.invoiceNo).length;
         return <div key={inv.id} style={{background:"var(--s1)",border:`1px solid ${hasBalance?"rgba(251,191,36,.25)":"var(--b1)"}`,borderRadius:10,padding:15,marginBottom:10,transition:"border-color .15s"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=hasBalance?"rgba(251,191,36,.5)":"rgba(255,255,255,.12)"}
           onMouseLeave={e=>e.currentTarget.style.borderColor=hasBalance?"rgba(251,191,36,.25)":"var(--b1)"}>
@@ -2007,7 +2076,10 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <div style={{background:"rgba(129,140,248,.1)",border:"1px solid rgba(129,140,248,.2)",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:80}}>
-                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--ac2)",fontWeight:700}}>{inv.invoiceNo}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
+                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--ac2)",fontWeight:700}}>{inv.invoiceNo}</span>
+                  <button title="Register Complaint" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:0,color:cmpCount>0?"var(--rd)":"var(--mu2)",lineHeight:1}} onClick={()=>setRegComplaint(inv)}>🔔{cmpCount>0&&<span style={{fontSize:8,color:"var(--rd)"}}>{cmpCount}</span>}</button>
+                </div>
                 <div style={{fontSize:9.5,color:"var(--mu)",marginTop:2}}>{inv.soldDate||"—"}</div>
               </div>
               <div>
@@ -2019,14 +2091,11 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
               </div>
             </div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-              {/* Payment status */}
               {inv.paymentReceived
                 ?<span className="badge" style={{background:"rgba(52,211,153,.12)",color:"var(--gr)"}}>✅ Fully Paid</span>
                 :<span className="badge" style={{background:"rgba(251,191,36,.12)",color:"var(--am)"}}>⏳ Balance Pending</span>
               }
-              {/* Delivery status */}
               <span className="badge" style={{background:`${ds.color}18`,color:ds.color}}>{ds.icon} {ds.label}</span>
-              {/* Actions */}
               <button className="btn bb bsm" onClick={()=>setSelInv(inv)}>View</button>
               {!inv.paymentReceived&&<button className="btn bg2 bsm" onClick={()=>setPayModal(inv)}>💰 Mark Paid</button>}
             </div>
@@ -2134,6 +2203,64 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
         <button className="btn bg2" onClick={()=>markFullPay(payModal)}>✅ Confirm Full Payment Received</button>
       </div>
     </div></div>}
+
+    {/* QUICK COMPLAINT REGISTER from Invoice Book */}
+    {regComplaint&&onAddComplaint&&<QuickComplaintModal
+      invoice={regComplaint}
+      complaints={complaints}
+      onAdd={async(c)=>{ await onAddComplaint(c); setRegComplaint(null); }}
+      onClose={()=>setRegComplaint(null)}
+    />}
+  </div>;
+}
+
+// ─── QUICK COMPLAINT MODAL (used from InvoiceBook) ───────────────────────────
+function QuickComplaintModal({ invoice, complaints, onAdd, onClose }) {
+  const [type, setType]     = useState("");
+  const [typeOther, setTypeOther] = useState("");
+  const [desc, setDesc]     = useState("");
+  const prevComps = complaints.filter(c=>c.invoiceNo===invoice.invoiceNo);
+
+  const submit = async () => {
+    if(!type) return;
+    await onAdd({id:genId(), invoiceNo:invoice.invoiceNo, unitId:invoice.id||"", customerName:invoice.soldTo||"", customerPhone:invoice.customerPhone||"", type, typeOther, description:desc, stage:"registered"});
+  };
+
+  return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="mo">
+      <div className="mti">🔔 Register Complaint</div>
+      <div className="msu">
+        <span className="invno">{invoice.invoiceNo}</span> · {invoice.soldTo||"Customer"} · {invoice.brand} {invoice.tonnage}
+        {invoice.starRating&&<span style={{color:"var(--am)",marginLeft:4}}>{starLabel(invoice.starRating)}</span>}
+      </div>
+
+      {prevComps.length>0&&<div style={{background:"rgba(251,191,36,.08)",border:"1px solid rgba(251,191,36,.2)",borderRadius:7,padding:"8px 11px",marginBottom:12,fontSize:11.5,color:"var(--am)"}}>
+        ⚠️ {prevComps.length} previous complaint{prevComps.length>1?"s":""} on this invoice —&nbsp;
+        {prevComps.map(c=>{ const t=COMPLAINT_TYPES.find(x=>x.id===c.type); return <span key={c.id} style={{marginRight:8}}>{t?.icon} {t?.label||c.type} <span style={{fontSize:10,color:"var(--mu2)"}}>{c.stage}</span></span>; })}
+      </div>}
+
+      <div className="fi" style={{marginBottom:12}}>
+        <label className="fl">Complaint Type *</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {COMPLAINT_TYPES.map(t=><div key={t.id}
+            style={{padding:"6px 12px",borderRadius:7,border:`1.5px solid ${type===t.id?"var(--ac)":"var(--b1)"}`,background:type===t.id?"rgba(56,189,248,.1)":"rgba(255,255,255,.02)",cursor:"pointer",fontSize:12,color:type===t.id?"var(--ac)":"var(--mu2)",transition:"all .13s"}}
+            onClick={()=>setType(t.id)}>
+            {t.icon} {t.label}
+          </div>)}
+        </div>
+        {type==="other"&&<input className="fn" style={{marginTop:8}} placeholder="Describe..." value={typeOther} onChange={e=>setTypeOther(e.target.value)}/>}
+      </div>
+
+      <div className="fi" style={{marginBottom:14}}>
+        <label className="fl">Description (optional)</label>
+        <textarea className="fn" style={{minHeight:70}} placeholder="Customer complaint details..." value={desc} onChange={e=>setDesc(e.target.value)}/>
+      </div>
+
+      <div className="mac">
+        <button className="btn bgh" onClick={onClose}>Cancel</button>
+        <button className="btn bp" onClick={submit} disabled={!type}>Register →</button>
+      </div>
+    </div>
   </div>;
 }
 
@@ -2820,7 +2947,18 @@ function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showT
           <div style={{fontSize:10,color:"var(--mu2)",marginTop:3}}>{resolvedInvoice.id} · sold {resolvedInvoice.soldDate}</div>
           {complaints.filter(x=>x.invoiceNo===form.invoiceNo).length>0&&<div style={{color:"var(--am)",marginTop:4}}>⚠️ {complaints.filter(x=>x.invoiceNo===form.invoiceNo).length} previous complaint(s) on this invoice</div>}
         </div>}
-        {form.invoiceNo.length>=7&&!resolvedInvoice&&<div style={{marginTop:6,fontSize:11,color:"var(--am)"}}>⚠️ Invoice not found — you can still register manually</div>}
+        {/* Suggestions as user types */}
+        {form.invoiceNo.length>=3&&!resolvedInvoice&&(()=>{
+          const q=form.invoiceNo.toUpperCase();
+          const suggestions=units.filter(u=>u.invoiceNo&&u.invoiceNo.toUpperCase().startsWith(q)&&u.invoiceNo.toUpperCase()!==q).slice(0,4);
+          if(!suggestions.length) return <div style={{marginTop:6,fontSize:11,color:"var(--am)"}}>⚠️ No matching invoices found</div>;
+          return <div style={{marginTop:6}}>
+            {suggestions.map(u=><div key={u.id} style={{padding:"7px 10px",background:"rgba(56,189,248,.06)",border:"1px solid rgba(56,189,248,.15)",borderRadius:6,marginBottom:4,cursor:"pointer",fontSize:11.5}} onClick={()=>{setForm(p=>({...p,invoiceNo:u.invoiceNo}));setResolvedInvoice(u);}}>
+              <span className="invno">{u.invoiceNo}</span> · <b>{u.soldTo||"—"}</b> · {u.brand} {u.tonnage}
+              {u.starRating&&<span style={{color:"var(--am)",marginLeft:4}}>{starLabel(u.starRating)}</span>}
+            </div>)}
+          </div>;
+        })()}
       </div>
 
       {/* Complaint type */}
@@ -3387,7 +3525,7 @@ export default function App() {
         {page==="qc"        && <QCModule units={units} warehouses={warehouses} onUpdate={updateUnit} user={user}/>}
         {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
         {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
-        {page==="invoices"   && <InvoiceBook units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} showToast={showToast}/>}
+        {page==="invoices"   && <InvoiceBook units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} showToast={showToast} complaints={complaints} onAddComplaint={addComplaint}/>}
         {page==="complaints" && <Complaints complaints={complaints} units={units} customers={customers} onAdd={addComplaint} onUpdate={updateComplaint} user={user} showToast={showToast}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
         {page==="verify"    && <StockVerify units={units} warehouses={warehouses} user={user} onVerificationComplete={onVerif} openCamera={openCamera}/>}
