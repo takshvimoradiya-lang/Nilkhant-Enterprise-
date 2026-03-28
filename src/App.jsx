@@ -384,6 +384,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .qc-no{color:var(--am);font-size:11px}
 
 @media print{.sb,.ph-act,.btn,.filt,.chd button{display:none!important}.main{margin:0!important;padding:0!important}}
+.inv-barcode{text-align:right;margin-top:6px}.inv-barcode svg{max-width:160px;height:40px}
 `;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1790,7 +1791,7 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
             <div className="inv-cotag">{invoiceTemplate?.tagline||"Premium AC Sales · Your City"}</div>
             <div style={{fontSize:10,color:"#6B7280",marginTop:3}}>{invoiceTemplate?.gstLine||"GST: YOUR-GST-NO"}</div>
           </div>
-          <div><div className="inv-no">{invModal.unit?.invoiceNo}</div><div className="inv-dt">{invModal.unit?.soldDate||today()}</div></div>
+          <div><div className="inv-no">{invModal.unit?.invoiceNo}</div><div className="inv-dt">{invModal.unit?.soldDate||today()}</div><InvoiceBarcode value={invModal.unit?.invoiceNo}/></div>
         </div>
         <div className="inv-parties">
           <div><div className="inv-plbl">Bill To</div><div className="inv-pname">{invModal.customer?.name||"—"}</div>
@@ -1904,6 +1905,24 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
 
 
 // ─── INVOICE BOOK ────────────────────────────────────────────────────────────
+
+// ─── INVOICE BARCODE ─────────────────────────────────────────────────────────
+function InvoiceBarcode({ value }) {
+  const ref = useRef();
+  const [rdy, setRdy] = useState(false);
+  useEffect(() => {
+    if (!value) return;
+    function render() {
+      if (window.JsBarcode && ref.current) {
+        try { window.JsBarcode(ref.current, value, {format:"CODE128",width:1.6,height:36,displayValue:true,fontSize:10,margin:2,background:"#ffffff",lineColor:"#000000"}); setRdy(true); } catch(e){}
+      }
+    }
+    if (window.JsBarcode) { render(); return; }
+    const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"; s.onload=render; document.head.appendChild(s);
+  }, [value]);
+  return <div className="inv-barcode"><svg ref={ref}/>{!rdy&&<div style={{fontSize:9,color:"#9CA3AF",height:40,display:"flex",alignItems:"center",justifyContent:"flex-end"}}>loading…</div>}</div>;
+}
+
 function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showToast, complaints=[], onAddComplaint }) {
   const [search, setSearch] = useState("");
   const [filterPay, setFilterPay] = useState("all"); // all | paid | pending
@@ -2136,7 +2155,7 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
           </div>
         </div>;
       })
-    }
+    )}
 
     {/* FULL INVOICE VIEW MODAL */}
     {selInv&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setSelInv(null)}>
@@ -2144,7 +2163,7 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
         <div className="inv-sheet">
           <div className="inv-hd">
             <div><div className="inv-co">❄️ Nilkhant Enterprise</div><div className="inv-cotag">AC Sales & Service</div></div>
-            <div><div className="inv-no">{selInv.invoiceNo}</div><div className="inv-dt">{selInv.soldDate||today()}</div></div>
+            <div><div className="inv-no">{selInv.invoiceNo}</div><div className="inv-dt">{selInv.soldDate||today()}</div><InvoiceBarcode value={selInv.invoiceNo}/></div>
           </div>
           <div className="inv-parties">
             <div><div className="inv-plbl">Bill To</div><div className="inv-pname">{selInv.soldTo||"—"}</div>
