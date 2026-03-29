@@ -1495,9 +1495,10 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
 // ─── QC MODULE ────────────────────────────────────────────────────────────────
 function QCModule({ units, warehouses, onUpdate, user }) {
   const [tab,setTab]=useState("pending_qc"); const [sel,setSel]=useState(null); const [note,setNote]=useState("");
+  const [search,setSearch]=useState("");
   const doPass=u=>onUpdate(u.id,{status:"available",qcAttempts:u.qcAttempts+1,testedBy:user.name,testedDate:today()});
   const doFail=()=>{ onUpdate(sel.id,{status:"under_repair",qcAttempts:sel.qcAttempts+1,testedBy:user.name,testedDate:today(),repairNote:note}); setSel(null); setNote(""); };
-  const rows=units.filter(u=>u.status===tab);
+  const rows=units.filter(u=>u.status===tab&&(!search||u.id.toLowerCase().includes(search.toLowerCase())||u.brand.toLowerCase().includes(search.toLowerCase())||(u.lot||"").toLowerCase().includes(search.toLowerCase())||(u.rfidIn||"").toLowerCase().includes(search.toLowerCase())||(u.rfidOut||"").toLowerCase().includes(search.toLowerCase())));
   return <div>
     <div className="ph"><div><div className="pt">🔬 QC Module</div><div className="ps">Test each unit — pass to stock, fail to repair</div></div></div>
     <div className="sg sg3">
@@ -1505,7 +1506,7 @@ function QCModule({ units, warehouses, onUpdate, user }) {
       <div className="sc rd"><div className="sl">Repair</div><div className="sv rd">{units.filter(u=>u.status==="under_repair").length}</div></div>
       <div className="sc gr"><div className="sl">Cleared Today</div><div className="sv gr">{units.filter(u=>u.testedDate===today()&&u.status==="available").length}</div></div>
     </div>
-    <div className="filt">{["pending_qc","under_repair","available"].map(s=><div key={s} className={`chip ${tab===s?"on":""}`} onClick={()=>setTab(s)}>{SC[s].icon} {SC[s].label} ({units.filter(u=>u.status===s).length})</div>)}</div>
+    <div className="filt">{["pending_qc","under_repair","available"].map(s=><div key={s} className={`chip ${tab===s?"on":""}`} onClick={()=>setTab(s)}>{SC[s].icon} {SC[s].label} ({units.filter(u=>u.status===s).length})</div>)}<input className="srch" placeholder="Search ID, brand, lot, RFID..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
     <div className="card"><div className="chd"><div className="ct">{SC[tab].icon} {SC[tab].label}</div></div>
       {rows.length===0?<div className="empty"><div className="ei">🎉</div><div className="et">No units here</div></div>:(
         <div className="tw"><table>
@@ -1838,9 +1839,21 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   </div>;
 }
 
-function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, showToast }) {
+function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, onAddDispatch, showToast }) {
   const [sf,setSf]=useState("all"); const [search,setSearch]=useState(""); const [det,setDet]=useState(null); const [sm,setSm]=useState(null);
   const [showDone, setShowDone] = useState(false);
+  const [bookModal, setBookModal] = useState(null); // unit to create new dispatch for
+  const [df, setDf] = useState({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
+  // Sold units with no dispatch yet
+  const noDispatch = units.filter(u=>u.status==="sold"&&!dispatches.find(d=>d.unitId===u.id));
+  const doBook = () => {
+    if(!bookModal) return;
+    const c = customers.find(c=>c.unitIds?.includes(bookModal.id));
+    onAddDispatch({id:genId(),unitId:bookModal.id,customerId:c?.id||"",invoiceNo:bookModal.invoiceNo,stage:"booked",...df});
+    showToast("Dispatch booked 🚚");
+    setBookModal(null);
+    setDf({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
+  };
   const enriched=dispatches.map(d=>({...d,unit:units.find(u=>u.id===d.unitId),customer:customers.find(c=>c.id===d.customerId)}));
   // "done" = delivered AND payment received on the unit
   const isDone = d => (d.stage==="fitting"||d.stage==="paid") && units.find(u=>u.id===d.unitId)?.paymentReceived===true;
@@ -1855,6 +1868,7 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
     <div className="ph">
       <div><div className="pt">🚚 Dispatch</div><div className="ps">Track deliveries — active only · completed hidden</div></div>
       <div className="ph-act">
+        {noDispatch.length>0&&<button className="btn bp bsm" onClick={()=>setBookModal(noDispatch[0])}>🚚 Book Dispatch ({noDispatch.length} pending)</button>}
         {doneDispatches.length>0&&<button className="btn bgh bsm" onClick={()=>setShowDone(p=>!p)}>
           {showDone?"▲ Hide Completed":"▼ Show Completed"} ({doneDispatches.length})
         </button>}
@@ -1866,6 +1880,24 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
       {DISPATCH_STAGES.map(s=><div key={s.id} className={`chip ${sf===s.id?"on":""}`} onClick={()=>setSf(s.id)}>{s.icon} {s.label}</div>)}
       <input className="srch" placeholder="Search unit, invoice, customer, tracking..." value={search} onChange={e=>setSearch(e.target.value)}/>
     </div>
+    {/* PENDING DISPATCH — sold but not dispatched */}
+    {noDispatch.length>0&&<div className="card" style={{marginBottom:12,borderLeft:"3px solid var(--am)"}}>
+      <div className="chd"><div><div className="ct" style={{color:"var(--am)"}}>⏳ Awaiting Dispatch ({noDispatch.length})</div><div className="cs">Sold units not yet dispatched — click to book</div></div></div>
+      <div className="tw"><table>
+        <thead><tr><th>Unit ID</th><th>Invoice</th><th>Brand/Ton/⭐</th><th>Customer</th><th>Phone</th><th>Sold Date</th><th>Action</th></tr></thead>
+        <tbody>{noDispatch.map(u=>{ const c=customers.find(x=>x.unitIds?.includes(u.id)); return <tr key={u.id}>
+          <td><span className="uid">{u.id}</span></td>
+          <td><span className="invno">{u.invoiceNo||"—"}</span></td>
+          <td><b>{u.brand}</b> {u.tonnage}{u.starRating&&<span style={{color:"var(--am)",fontSize:10}}> {starLabel(u.starRating)}</span>}</td>
+          <td style={{fontWeight:600}}>{u.soldTo||c?.name||"—"}</td>
+          <td style={{fontSize:11}}>{u.customerPhone||c?.phone||"—"}</td>
+          <td style={{fontSize:11}}>{u.soldDate||"—"}</td>
+          <td><button className="btn bp bsm" onClick={()=>setBookModal(u)}>🚚 Book →</button></td>
+        </tr>;})}
+        </tbody>
+      </table></div>
+    </div>}
+
     {filtered.length===0?<div className="empty"><div className="ei">🚚</div><div className="et">No dispatches found</div></div>:filtered.map(d=>{
       const idx=si(d.stage); const next=DISPATCH_STAGES[idx+1];
       return <div key={d.id} className="dtcard">
@@ -1899,6 +1931,26 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
       <div className="mti">{sm.next.icon} Advance to "{sm.next.label}"</div><div className="msu"><span className="uid">{sm.d.unitId}</span> · {sm.d.customer?.name}</div>
       <div className="al al-b">Current: <strong>{DISPATCH_STAGES.find(s=>s.id===sm.d.stage)?.label}</strong> → <strong style={{color:sm.next.color}}>{sm.next.label}</strong></div>
       <div className="mac"><button className="btn bgh" onClick={()=>setSm(null)}>Cancel</button><button className="btn bp" onClick={()=>adv(sm.d,sm.next.id)}>Confirm →</button></div>
+    </div></div>}
+
+    {/* BOOK NEW DISPATCH MODAL */}
+    {bookModal&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setBookModal(null)}><div className="mo">
+      <div className="mti">🚚 Book Dispatch</div>
+      <div className="msu"><span className="uid">{bookModal.id}</span> · <span className="invno">{bookModal.invoiceNo}</span> · {bookModal.brand} {bookModal.tonnage}</div>
+      {/* Pick from all pending if multiple */}
+      {noDispatch.length>1&&<div className="fi" style={{marginBottom:12}}>
+        <label className="fl">Select Unit</label>
+        <select className="fs" value={bookModal.id} onChange={e=>setBookModal(noDispatch.find(u=>u.id===e.target.value))}>
+          {noDispatch.map(u=><option key={u.id} value={u.id}>{u.id} · {u.invoiceNo} · {u.soldTo||"—"} · {u.brand} {u.tonnage}</option>)}
+        </select>
+      </div>}
+      <div className="fg2">
+        <div className="fi"><label className="fl">Delivery Partner</label><input className="fn" value={df.deliveryPartner} onChange={e=>setDf(p=>({...p,deliveryPartner:e.target.value}))} placeholder="BlueDart, DTDC, Self..."/></div>
+        <div className="fi"><label className="fl">Tracking Number</label><input className="fn" value={df.trackingNo} onChange={e=>setDf(p=>({...p,trackingNo:e.target.value}))}/></div>
+        <div className="fi"><label className="fl">Booked Date</label><input type="date" className="fn" value={df.bookedDate} onChange={e=>setDf(p=>({...p,bookedDate:e.target.value}))}/></div>
+        <div className="fi full"><label className="fl">Notes</label><textarea className="fn" value={df.notes} onChange={e=>setDf(p=>({...p,notes:e.target.value}))}/></div>
+      </div>
+      <div className="mac"><button className="btn bgh" onClick={()=>setBookModal(null)}>Cancel</button><button className="btn bp" onClick={doBook}>Book Dispatch →</button></div>
     </div></div>}
   </div>;
 }
@@ -2384,9 +2436,52 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
       </table></div>
     </div>}
 
-    {tab==="perms"&&<div className="card"><div className="chd"><div className="ct">🔐 Permission Matrix</div></div>
-      <div className="tw"><table><thead><tr><th>User</th>{ALL_MODULES.map(m=><th key={m.id} style={{textAlign:"center"}}>{m.icon}<br/><span style={{fontSize:8}}>{m.label.split(" ")[0]}</span></th>)}</tr></thead>
-        <tbody>{users.map(u=><tr key={u.id}><td><b style={{fontSize:11.5}}>{u.name}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.role}</span></td>{ALL_MODULES.map(m=><td key={m.id} style={{textAlign:"center"}}>{(u.modules||[]).includes(m.id)?<span style={{color:"var(--gr)"}}>✅</span>:<span style={{color:"#1E293B"}}>✗</span>}</td>)}</tr>)}</tbody>
+    {tab==="perms"&&<div className="card">
+      <div className="chd"><div><div className="ct">🔐 Permission Matrix</div><div className="cs">Click any cell to toggle access · Changes save instantly</div></div></div>
+      <div className="tw"><table>
+        <thead><tr>
+          <th style={{minWidth:120}}>User / Role</th>
+          {ALL_MODULES.map(m=><th key={m.id} style={{textAlign:"center",minWidth:58}}>
+            <div style={{fontSize:14}}>{m.icon}</div>
+            <div style={{fontSize:8,marginTop:2,lineHeight:1.3,color:"var(--mu2)"}}>{m.label}</div>
+          </th>)}
+        </tr></thead>
+        <tbody>{users.map(u=>{
+          const mods = u.modules||[];
+          const toggle = mid => {
+            const newMods = mods.includes(mid)?mods.filter(x=>x!==mid):[...mods,mid];
+            onUsersChange(users.map(x=>x.id===u.id?{...x,modules:newMods}:x));
+            showToast(`${u.name}: ${mid} ${newMods.includes(mid)?"enabled":"disabled"}`,"info");
+          };
+          return <tr key={u.id}>
+            <td>
+              <div style={{fontWeight:700,fontSize:12}}>{u.name}</div>
+              <span style={{background:u.role==="admin"?"rgba(251,191,36,.12)":"rgba(56,189,248,.12)",color:u.role==="admin"?"var(--am)":"var(--ac)",borderRadius:4,padding:"1px 6px",fontSize:9.5}}>{u.role}</span>
+            </td>
+            {ALL_MODULES.map(m=>{
+              const has = mods.includes(m.id);
+              const isAdminOnly = m.adminOnly && u.role!=="admin";
+              return <td key={m.id} style={{textAlign:"center",padding:"6px 4px"}}>
+                <div
+                  onClick={()=>!isAdminOnly&&toggle(m.id)}
+                  title={isAdminOnly?"Admin only module":has?"Click to revoke access":"Click to grant access"}
+                  style={{
+                    width:28,height:28,borderRadius:6,margin:"0 auto",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    cursor:isAdminOnly?"not-allowed":"pointer",
+                    background:isAdminOnly?"rgba(255,255,255,.03)":has?"rgba(52,211,153,.15)":"rgba(255,255,255,.04)",
+                    border:`1.5px solid ${isAdminOnly?"rgba(255,255,255,.05)":has?"rgba(52,211,153,.4)":"rgba(255,255,255,.08)"}`,
+                    transition:"all .15s",fontSize:13,
+                  }}
+                  onMouseEnter={e=>{if(!isAdminOnly)e.currentTarget.style.transform="scale(1.15)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}
+                >
+                  {isAdminOnly?"🔒":has?"✅":"—"}
+                </div>
+              </td>;
+            })}
+          </tr>;
+        })}</tbody>
       </table></div>
     </div>}
 
@@ -2728,8 +2823,9 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
 
     {/* TECHNICIAN REPORT */}
     {rpt==="tech"&&<div>
-      <div style={{marginBottom:16,fontSize:12,color:"var(--mu2)"}}>All-time technician performance — units tested, pass rate, efficiency</div>
-      <div className="card"><div className="chd"><div className="ct">QC Performance by Technician</div></div>
+      <div style={{marginBottom:16,fontSize:12,color:"var(--mu2)"}}>All-time technician performance — QC testing + complaint handling</div>
+      {/* QC Stats */}
+      <div className="card" style={{marginBottom:12}}><div className="chd"><div><div className="ct">🔬 QC Performance by Technician</div></div></div>
         {(() => {
           const techMap={};
           units.filter(u=>u.testedBy).forEach(u=>{
@@ -2747,6 +2843,34 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
             return <tr key={i}><td style={{fontWeight:600}}>{t.name}</td><td style={{color:"var(--ac)",fontWeight:700}}>{total}</td><td style={{color:"var(--gr)",fontWeight:600}}>{t.passed}</td><td style={{color:"var(--rd)"}}>{t.repaired}</td>
               <td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
               <td style={{fontSize:14}}>{rating}</td>
+            </tr>;
+          })}</tbody></table>;
+        })()}
+      </div>
+      {/* Complaint Handling Stats */}
+      <div className="card"><div className="chd"><div><div className="ct">🔔 Complaint Handling by Technician</div></div></div>
+        {(() => {
+          const cmap={};
+          complaints.filter(c=>c.technicianName).forEach(c=>{
+            const k=c.technicianName;
+            if(!cmap[k])cmap[k]={name:k,total:0,resolved:0,open:0,inProgress:0};
+            cmap[k].total++;
+            if(c.stage==="resolved") cmap[k].resolved++;
+            else if(c.stage==="in_progress") cmap[k].inProgress++;
+            else cmap[k].open++;
+          });
+          const techs=Object.values(cmap);
+          if(!techs.length) return <div className="empty"><div className="et">No complaint data assigned to technicians yet</div></div>;
+          return <table><thead><tr><th>Technician</th><th>Assigned</th><th>Resolved</th><th>In Progress</th><th>Open</th><th>Resolution Rate</th></tr></thead>
+          <tbody>{techs.sort((a,b)=>b.total-a.total).map((t,i)=>{
+            const rate=t.total>0?Math.round(t.resolved/t.total*100):0;
+            return <tr key={i}>
+              <td style={{fontWeight:600}}>{t.name}</td>
+              <td style={{color:"var(--ac)",fontWeight:700}}>{t.total}</td>
+              <td style={{color:"var(--gr)",fontWeight:600}}>{t.resolved}</td>
+              <td style={{color:"var(--ac2)"}}>{t.inProgress}</td>
+              <td style={{color:"var(--rd)"}}>{t.open}</td>
+              <td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
             </tr>;
           })}</tbody></table>;
         })()}
@@ -3543,7 +3667,7 @@ export default function App() {
         {page==="intake"    && <StockIntake units={units} lots={lots} brands={brands} tonnages={tonnages} warehouses={warehouses} onAdd={addUnit} onBulkAdd={bulkAddUnits} onTransfer={transferUnit} user={user}/>}
         {page==="qc"        && <QCModule units={units} warehouses={warehouses} onUpdate={updateUnit} user={user}/>}
         {page==="sales"     && <Sales units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} onAddCustomer={addCustomer} onAddDispatch={addDispatch} user={user} showToast={showToast} invCtr={invCtr} setInvCtr={setInvCtr} invoiceTemplate={invoiceTemplate}/>}
-        {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
+        {page==="dispatch"  && <Dispatch dispatches={dispatches} units={units} customers={customers} warehouses={warehouses} onUpdateDispatch={updateDispatch} onAddDispatch={addDispatch} showToast={showToast} invoiceTemplate={invoiceTemplate}/>}
         {page==="invoices"   && <InvoiceBook units={units} customers={customers} dispatches={dispatches} warehouses={warehouses} onUpdate={updateUnit} showToast={showToast} complaints={complaints} onAddComplaint={addComplaint}/>}
         {page==="complaints" && <Complaints complaints={complaints} units={units} customers={customers} onAdd={addComplaint} onUpdate={updateComplaint} user={user} showToast={showToast}/>}
         {page==="customers" && <Customers customers={customers} units={units} dispatches={dispatches}/>}
