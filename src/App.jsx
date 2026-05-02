@@ -71,9 +71,6 @@ const SEED_TONNAGES = [
   { id:"t5", value:"3 Ton",    createdDate:"2024-01-01", remark:"Commercial" },
 ];
 // ─── CHANGE THESE CREDENTIALS BEFORE DEPLOYING ────────────────────────────────
-// Step 1: Change name, username, password below to your own values
-// Step 2: After deployment, log in and go to Master → Users to add more users
-// Step 3: Delete this comment once done
 const SEED_USERS = [
   { id:"u1", name:"Admin User", username:"admin", password:"admin123", role:"admin", modules:ALL_MODULES.map(m=>m.id), createdDate:"2025-01-01" },
 ];
@@ -385,6 +382,11 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 
 @media print{.sb,.ph-act,.btn,.filt,.chd button{display:none!important}.main{margin:0!important;padding:0!important}}
 .inv-barcode{text-align:right;margin-top:6px}.inv-barcode svg{max-width:160px;height:40px}
+.row{display:flex;align-items:center}.col{display:flex;flex-direction:column}.row-sb{display:flex;align-items:center;justify-content:space-between}.row-wrap{display:flex;align-items:center;flex-wrap:wrap}
+.f700{font-weight:700}.f600{font-weight:600}.f11{font-size:11px}.f10{font-size:10px}.f12{font-size:12px}.f9{font-size:9.5px}
+.mu{color:var(--mu)}.mu2{color:var(--mu2)}.cgr{color:var(--gr)}.cam{color:var(--am)}.crd{color:var(--rd)}.cac{color:var(--ac)}
+.mb4{margin-bottom:4px}.mb6{margin-bottom:6px}.mb8{margin-bottom:8px}.mb10{margin-bottom:10px}.mb12{margin-bottom:12px}.mb14{margin-bottom:14px}
+.br6{border-radius:6px}.br8{border-radius:8px}.br10{border-radius:10px}
 `;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -464,7 +466,7 @@ function RFIDDetail({ unit, customers, dispatches, warehouses, onClose }) {
   return (
     <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="mo lg">
-        <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:4}}>
+        <div className="row" style={{gap:11,marginBottom:4}}>
           <div style={{width:40,height:40,borderRadius:9,background:"linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.15))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>❄️</div>
           <div style={{flex:1}}><div className="mti">{unit.brand} {unit.tonnage} {unit.starRating&&<span style={{color:"var(--am)",fontSize:14}}>{starLabel(unit.starRating)}</span>} · <span className="uid">{unit.id}</span></div><span className="lot">{unit.lot}</span> &nbsp; <WHLabel whId={unit.warehouse} warehouses={warehouses}/></div>
           <Bdg status={unit.status}/>
@@ -496,7 +498,6 @@ function Login({ users, onLogin }) {
 
 // ─── EXCEL EXPORT ────────────────────────────────────────────────────────────
 function exportAllToExcel(units, customers, dispatches, warehouses) {
-  // Build CSV content for each sheet then trigger download as .xlsx via SheetJS CDN
   function loadAndExport() {
     if (!window.XLSX) {
       const s = document.createElement("script");
@@ -512,7 +513,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     const dt = new Date().toISOString().slice(0,10);
     const whName = id => warehouses.find(w=>w.id===id)?.name||id||"—";
 
-    // Sheet 1 — All Stock
     const allRows = units.map(u=>({
       "Unit ID":u.id, "Status":u.status?.replace("_"," "),
       "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
@@ -531,7 +531,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     ws1["!cols"] = [{wch:10},{wch:14},{wch:14},{wch:14},{wch:10},{wch:10},{wch:14},{wch:16},{wch:14},{wch:12},{wch:14},{wch:15},{wch:12},{wch:14},{wch:12},{wch:20},{wch:12},{wch:18},{wch:12},{wch:15},{wch:12},{wch:16},{wch:14},{wch:14},{wch:16}];
     window.XLSX.utils.book_append_sheet(wb, ws1, "All Stock");
 
-    // Sheet 2 — Available
     const avail = units.filter(u=>u.status==="available").map(u=>({
       "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
@@ -540,7 +539,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(avail.length?avail:[{"Message":"No available units"}]), "Available Stock");
 
-    // Sheet 3 — Sold
     const sold = units.filter(u=>u.status==="sold").map(u=>({
       "Unit ID":u.id, "Invoice No":u.invoiceNo||"", "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Warehouse":whName(u.warehouse),
@@ -551,7 +549,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(sold.length?sold:[{"Message":"No sold units"}]), "Sold Units");
 
-    // Sheet 4 — Pending QC
     const qc = units.filter(u=>u.status==="pending_qc").map(u=>({
       "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Model":u.model||"",
@@ -560,7 +557,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(qc.length?qc:[{"Message":"No units pending QC"}]), "Pending QC");
 
-    // Sheet 5 — Under Repair
     const rep = units.filter(u=>u.status==="under_repair").map(u=>({
       "Unit ID":u.id, "Warehouse":whName(u.warehouse), "Lot":u.lot||"",
       "Brand":u.brand, "Tonnage":u.tonnage, "Repair Note":u.repairNote||"",
@@ -568,7 +564,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rep.length?rep:[{"Message":"No units under repair"}]), "Under Repair");
 
-    // Sheet 6 — Customers
     const custs = customers.map(c=>({
       "Name":c.name, "Phone":c.phone||"", "Alt Phone":c.altPhone||"",
       "Email":c.email||"", "Address":c.address||"", "City":c.city||"",
@@ -577,7 +572,6 @@ function exportAllToExcel(units, customers, dispatches, warehouses) {
     }));
     window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(custs.length?custs:[{"Message":"No customers yet"}]), "Customers");
 
-    // Sheet 7 — Dispatches
     const disps = dispatches.map(d=>({
       "Unit ID":d.unitId||"", "Invoice":d.invoiceNo||"",
       "Stage":d.stage||"", "Partner":d.deliveryPartner||"",
@@ -602,7 +596,6 @@ function downloadSampleExcel(lots, brands, tonnages, warehouses) {
     ];
     const ws = window.XLSX.utils.json_to_sheet(sample);
     ws["!cols"] = [{wch:16},{wch:12},{wch:10},{wch:16},{wch:18},{wch:14},{wch:12},{wch:14},{wch:15},{wch:14},{wch:10},{wch:20}];
-    // Add dropdown hints as a second sheet
     const hintsData = [
       {"Field":"Lot Number","Required":"YES","Notes":"Must match a lot created in Master → Lots"},
       {"Field":"Brand","Required":"YES","Notes":"Must match a brand in Master → Brands. e.g. "+brands.slice(0,3).map(b=>b.name).join(", ")},
@@ -666,14 +659,11 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
             const row = {_idx:i};
             Object.keys(r).forEach(k=>{ const m=FIELD_MAP[k.toLowerCase().trim()]; if(m) row[m]=String(r[k]||"").trim(); });
             row.id = "AC-"+String(maxNum+i+1).padStart(3,"0");
-            // Resolve warehouse name → id
             const whMatch = warehouses.find(w=>w.name.toLowerCase()===(row.warehouseName||"").toLowerCase());
             row.warehouse = whMatch?.id || warehouses[0]?.id || "";
             delete row.warehouseName;
-            // QC Done handling
             const qcDoneVal = (row.qcDone||"").toLowerCase();
             row.qcDone = qcDoneVal==="yes"||qcDoneVal==="y"||qcDoneVal==="true"||qcDoneVal==="1";
-            // Normalize star rating
             if(row.starRating){ const sn=row.starRating.toLowerCase().replace(/[^0-9]/g,""); row.starRating=sn?`${sn}star`:""; }
             row.status = row.qcDone ? "available" : "pending_qc";
             row.qcAttempts = row.qcDone ? 1 : 0;
@@ -726,9 +716,9 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="mo" style={{maxWidth:960,maxHeight:"93vh",overflowY:"auto"}}>
       {/* STEPS */}
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16}}>
+      <div className="row" style={{gap:6,marginBottom:16}}>
         {[["1","Upload"],["2","Preview & Edit"],["3","Done"]].map(([n,lb],i)=><>
-          <div key={n} style={{display:"flex",alignItems:"center",gap:5}}>
+          <div key={n} className="row" style={{gap:5}}>
             <div style={{width:22,height:22,borderRadius:"50%",background:step>=i?"linear-gradient(135deg,var(--ac),var(--ac2))":"rgba(255,255,255,.05)",color:step>=i?"#fff":"var(--mu)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>{n}</div>
             <span style={{fontSize:11.5,fontWeight:600,color:step>=i?"var(--tx)":"var(--mu)"}}>{lb}</span>
           </div>
@@ -756,7 +746,7 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
 
       {/* STEP 1 — PREVIEW + EDIT */}
       {step===1&&<>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+        <div className="row" style={{justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
           <div><div className="mti" style={{marginBottom:2}}>{rows.length} rows found</div>
             <div style={{fontSize:11.5,color:errCount>0?"var(--rd)":"var(--gr)"}}>{errCount>0?`⚠️ ${errCount} row(s) have errors — fix before importing`:"✅ All rows valid — ready to import"}</div>
           </div>
@@ -774,7 +764,7 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
               <td style={{color:"var(--mu)",fontSize:10}}>{i+1}</td>
               <td><span className="uid">{r.id}</span></td>
               <td><span className="lot">{r.lot||<span style={{color:"var(--rd)"}}>—</span>}</span></td>
-              <td style={{fontWeight:600}}>{r.brand||<span style={{color:"var(--rd)"}}>—</span>}</td>
+              <td className="f600">{r.brand||<span style={{color:"var(--rd)"}}>—</span>}</td>
               <td>{r.tonnage||"—"}</td>
               <td className="price">{r.salePrice?fmt(r.salePrice):<span style={{color:"var(--rd)"}}>—</span>}</td>
               <td>{r.qcDone?<span className="qc-yes">✅ Yes</span>:<span className="qc-no">⏳ No</span>}</td>
@@ -815,7 +805,7 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
             <div className="fi"><label className="fl">Model</label><input className="fn" value={editRow.model||""} onChange={e=>setEditRow(p=>({...p,model:e.target.value}))}/></div>
             <div className="fi"><label className="fl">Supplier</label><input className="fn" value={editRow.supplier||""} onChange={e=>setEditRow(p=>({...p,supplier:e.target.value}))}/></div>
             <div className="fi full" style={{flexDirection:"row",alignItems:"center",gap:10}}>
-              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+              <label className="row" style={{gap:8,cursor:"pointer",fontSize:13}}>
                 <input type="checkbox" checked={editRow.qcDone||false} onChange={e=>setEditRow(p=>({...p,qcDone:e.target.checked}))} style={{accentColor:"var(--gr)",width:14,height:14}}/>
                 QC Done — skip QC queue, go directly to Available
               </label>
@@ -827,7 +817,6 @@ function ExcelImportModal({ lots, brands, tonnages, warehouses, units, onBulkAdd
     </div>
   </div>;
 }
-
 
 function Dashboard({ units, tonnages, warehouses, customers, dispatches, user }) {
   const [view, setView] = useState("overall");
@@ -858,7 +847,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
     if(!data.length) return <div className="empty"><div className="et">No data</div></div>;
     return <>{data.map((t,i)=><div key={t.label} style={{marginBottom:11}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:cols[i%cols.length]}}/><span style={{fontSize:12,fontWeight:700}}>{t.label}</span></div>
+        <div className="row" style={{gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:cols[i%cols.length]}}/><span style={{fontSize:12,fontWeight:700}}>{t.label}</span></div>
         <div style={{display:"flex",gap:11,fontSize:10.5}}><span style={{color:"var(--am)"}}>⏳{t.pend}</span><span style={{color:"var(--gr)"}}>✅{t.avail}</span><span style={{color:"var(--rd)"}}>🔧{t.rep}</span><span style={{color:"var(--gy)"}}>💰{t.sold}</span><span style={{color:"var(--ac)",fontWeight:700}}>Σ{t.total}</span></div>
       </div>
       <div style={{display:"flex",height:7,borderRadius:5,overflow:"hidden",background:"rgba(255,255,255,.04)"}}>
@@ -897,8 +886,8 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
 
     {/* PAYMENT PENDING BOX — admin sees all-time, others see today only */}
     {pendPayUnits.length>0&&<div className="pend-pay-box" onClick={()=>setShowPendPay(p=>!p)}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div className="row" style={{justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div className="row" style={{gap:10}}>
           <span style={{fontSize:20}}>💰</span>
           <div>
             <div style={{fontSize:13,fontWeight:700,color:"var(--am)"}}>Payment Pending</div>
@@ -915,7 +904,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
       <table><thead><tr><th>Unit ID</th><th>Customer</th><th>Phone</th><th>Invoice</th><th>Total</th><th>Booking Paid</th><th>Balance Due</th><th>Sold Date</th></tr></thead>
       <tbody>{pendPayUnits.map(u=><tr key={u.id}>
         <td><span className="uid">{u.id}</span></td>
-        <td style={{fontWeight:600}}>{u.soldTo||"—"}</td>
+        <td className="f600">{u.soldTo||"—"}</td>
         <td style={{fontSize:11}}>{u.customerPhone||"—"}</td>
         <td><span className="invno">{u.invoiceNo||"—"}</span></td>
         <td className="price">{fmt(u.totalAmount||u.salePrice)}</td>
@@ -1006,7 +995,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
 
     {warehouses.map(wh=>{ if(view!==wh.id)return null; const wu=units.filter(u=>u.warehouse===wh.id); const ws=getStats(wu);
       return <div key={wh.id}>
-        <div className="wh-card"><div className="wh-card-hd"><div><div style={{fontSize:14,fontWeight:800}}>🏭 {wh.name}</div><div style={{fontSize:10.5,color:"var(--mu2)",marginTop:2}}>{wh.location}</div></div><span style={{fontSize:11,color:"var(--mu2)"}}>{wu.length} units</span></div>
+        <div className="wh-card"><div className="wh-card-hd"><div><div style={{fontSize:14,fontWeight:800}}>🏭 {wh.name}</div><div style={{fontSize:10.5,color:"var(--mu2)",marginTop:2}}>{wh.location}</div></div><span className="f11 mu2">{wu.length} units</span></div>
           <div className="wh-stats">{[["⏳","Pending QC",ws.pend,"var(--am)"],["✅","Available",ws.avail,"var(--gr)"],["🔧","Repair",ws.rep,"var(--rd)"],["💰","Sold",ws.sold,"var(--gy)"]].map(([ic,lb,vl,cl])=><div key={lb} className="wh-stat"><div className="wh-stat-v" style={{color:cl}}>{vl}</div><div className="wh-stat-l">{ic} {lb}</div></div>)}</div>
         </div>
         <div className="card"><div className="chd"><div><div className="ct">📐 Tonnage-wise — {wh.name}</div></div></div><TonBreakdown unitSet={wu}/></div>
@@ -1036,7 +1025,7 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
               const tons=[...new Set(units.filter(u=>u.status==="available").map(u=>u.tonnage))].sort();
               const starSummary=[...new Set(bu.map(u=>u.starRating).filter(Boolean))].map(s=>starLabel(s)).join(" ");
               return <tr key={brand}>
-                <td style={{fontWeight:700}}>{brand}</td>
+                <td className="f700">{brand}</td>
                 <td style={{color:"var(--ac)",fontWeight:700}}>{bu.length}</td>
                 {tons.map(t=><td key={t} style={{color:bu.filter(u=>u.tonnage===t).length>0?"var(--gr)":"var(--mu)",fontWeight:600}}>{bu.filter(u=>u.tonnage===t).length||"—"}</td>)}
                 <td style={{fontSize:11,color:"var(--am)"}}>{starSummary||"—"}</td>
@@ -1105,10 +1094,10 @@ function Dashboard({ units, tonnages, warehouses, customers, dispatches, user })
               <thead><tr><th>Unit ID</th><th>Brand</th><th>Tonnage</th><th>Stars</th><th>Model</th><th>Price</th><th>Lot</th></tr></thead>
               <tbody>{wu.sort((a,b)=>a.brand.localeCompare(b.brand)).map(u=><tr key={u.id}>
                 <td><span className="uid">{u.id}</span></td>
-                <td style={{fontWeight:600}}>{u.brand}</td>
+                <td className="f600">{u.brand}</td>
                 <td><span className="ton-badge">{u.tonnage}</span></td>
                 <td style={{fontSize:12,color:"var(--am)"}}>{u.starRating?starLabel(u.starRating):"—"}</td>
-                <td style={{fontSize:11,color:"var(--mu2)"}}>{u.model||"—"}</td>
+                <td className="f11 mu2">{u.model||"—"}</td>
                 <td className="price">{fmt(u.salePrice)}</td>
                 <td><span className="lot">{u.lot||"—"}</span></td>
               </tr>)}</tbody>
@@ -1131,7 +1120,6 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
   const [rfidError, setRfidError] = useState(""); // duplicate RFID warning
   const f=v=>setForm(p=>({...p,...v}));
 
-  // Check if an RFID tag is already assigned to another unit
   const checkRfid = (tag, field) => {
     if(!tag) { setRfidError(""); return; }
     const dup = units.find(u => {
@@ -1145,7 +1133,6 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
   const submit=()=>{
     if(!form.brand||!form.tonnage||!form.lot||!form.salePrice||!form.warehouse) return;
     if(rfidError) return; // block if duplicate RFID
-    // Double-check both tags on submit
     const tags = [form.rfidIn, form.rfidOut].filter(Boolean).map(t=>t.trim().toUpperCase());
     const dupCheck = units.find(u => tags.includes((u.rfidIn||"").toUpperCase()) || tags.includes((u.rfidOut||"").toUpperCase()));
     if(dupCheck) { setRfidError(`⚠️ RFID tag already used on ${dupCheck.id}`); return; }
@@ -1188,7 +1175,7 @@ function StockIntake({ units, lots, brands, tonnages, warehouses, onAdd, onBulkA
           <td><span className="uid">{u.id}</span></td>
           <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
           <td><span className="lot">{u.lot||"—"}</span></td>
-          <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
+          <td><b>{u.brand}</b><br/><span className="f9 mu">{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
           <td>{u.rfidIn?<><span className="rtag">{u.rfidIn}</span><br/><span className="rtag">{u.rfidOut}</span></>:<span style={{fontSize:9.5,color:"var(--am)"}}>⚠️ None</span>}</td>
           <td className="price">{fmt(u.salePrice)}</td>
           <td><Bdg status={u.status}/></td>
@@ -1252,14 +1239,11 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
   const [scanFeedback, setScanFeedback] = useState(null); // {tag, status, unitId, brand}
   const inputRef = useRef();
 
-  // Active (non-sold) units, filtered by warehouse
   const activeUnits = units.filter(u=>u.status!=="sold"&&(whFilter==="all"||u.warehouse===whFilter));
 
-  // Build rfid→unit map
   const rfidMap = {};
   activeUnits.forEach(u=>{ if(u.rfidIn)rfidMap[u.rfidIn.toUpperCase()]=u; if(u.rfidOut)rfidMap[u.rfidOut.toUpperCase()]=u; });
 
-  // Per-unit verification state
   const unitState = activeUnits.map(u=>{
     const inScanned  = u.rfidIn  && scannedRfids.has(u.rfidIn.toUpperCase());
     const outScanned = u.rfidOut && scannedRfids.has(u.rfidOut.toUpperCase());
@@ -1281,7 +1265,6 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
     setInputVal("");
     setScannedRfids(prev=>new Set([...prev, tag]));
     inputRef.current?.focus();
-    // Show scan feedback
     const matchedUnit = rfidMap[tag];
     if(matchedUnit) {
       const alreadyHasIn  = matchedUnit.rfidIn  && scannedRfids.has(matchedUnit.rfidIn.toUpperCase());
@@ -1383,7 +1366,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
           })}>
           📷 Open Camera Scanner
         </button>
-        <span style={{fontSize:11,color:"var(--mu2)"}}>or type below</span>
+        <span className="f11 mu2">or type below</span>
       </div>
       <div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
         <input ref={inputRef} className="scan-input" value={inputVal} onChange={e=>setInputVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleScan()} placeholder="e.g. RFI-001-IN"/>
@@ -1398,10 +1381,10 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
       <div className="chd">
         <div><div className="ct">Unit Verification Status</div><div className="cs">Green = both tags scanned · Amber = one tag · Red = none</div></div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11.5,cursor:"pointer",color:"var(--mu2)"}}>
+          <label className="row" style={{gap:5,fontSize:11.5,cursor:"pointer",color:"var(--mu2)"}}>
             <input type="checkbox" checked={showVerified} onChange={e=>setShowVerified(e.target.checked)} style={{accentColor:"var(--gr)"}}/> Show Verified ({verified.length})
           </label>
-          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11.5,cursor:"pointer",color:"var(--mu2)"}}>
+          <label className="row" style={{gap:5,fontSize:11.5,cursor:"pointer",color:"var(--mu2)"}}>
             <input type="checkbox" checked={showMissing} onChange={e=>setShowMissing(e.target.checked)} style={{accentColor:"var(--rd)"}}/> Show Missing ({missing.length})
           </label>
         </div>
@@ -1422,7 +1405,7 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
 
               {/* UNIT INFO */}
               <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                <div className="row" style={{gap:7,flexWrap:"wrap"}}>
                   <span className="uid">{u.id}</span>
                   <span style={{fontSize:11.5,fontWeight:600}}>{u.brand} {u.tonnage}</span>
                   {u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}
@@ -1431,13 +1414,13 @@ function StockVerify({ units, warehouses, user, onVerificationComplete, openCame
                 </div>
                 {/* RFID TAG STATUS */}
                 <div style={{display:"flex",gap:10,marginTop:5,flexWrap:"wrap"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div className="row" style={{gap:4}}>
                     <div className={`tag-dot ${s.inScanned?"scanned":"missing"}`}/>
                     <span style={{fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:s.inScanned?"var(--gr)":"var(--mu)"}}>
                       {u.rfidIn||"No indoor tag"} {s.inScanned?"✓":""}
                     </span>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div className="row" style={{gap:4}}>
                     <div className={`tag-dot ${s.outScanned?"scanned":"missing"}`}/>
                     <span style={{fontSize:10,fontFamily:"'JetBrains Mono',monospace",color:s.outScanned?"var(--gr)":"var(--mu)"}}>
                       {u.rfidOut||"No outdoor tag"} {s.outScanned?"✓":""}
@@ -1518,7 +1501,7 @@ function QCModule({ units, warehouses, onUpdate, user }) {
             <td><span className="uid">{u.id}</span></td>
             <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
             <td><span className="lot">{u.lot||"—"}</span></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
+            <td><b>{u.brand}</b><br/><span className="f9 mu">{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
             <td>{u.rfidIn?<><span className="rtag">{u.rfidIn}</span><br/><span className="rtag">{u.rfidOut}</span></>:<span style={{fontSize:9.5,color:"var(--am)"}}>⚠️ None</span>}</td>
             <td style={{fontWeight:700,color:u.qcAttempts>1?"var(--rd)":"var(--gr)"}}>{u.qcAttempts}</td>
             {tab==="under_repair"&&<td style={{fontSize:10,color:"#FECACA"}}>{u.repairNote||"—"}</td>}
@@ -1577,7 +1560,6 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   const [fStar,   setFStar]   = useState("all");
   const [fWH,     setFWH]     = useState("all");
   const avail=units.filter(u=>u.status==="available");
-  // "completed" = sold + payment received + delivered
   const isCompleted = u => u.status==="sold" && u.paymentReceived===true && dispatches.find(d=>d.unitId===u.id&&(d.stage==="fitting"||d.stage==="paid"));
   const sold = units.filter(u=>u.status==="sold");
   const activeSold = sold.filter(u=>!isCompleted(u));  // needs action
@@ -1609,7 +1591,6 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
   const markBookingPay=u=>{ onUpdate(u.id,{paymentReceived:false,bookingCollected:true}); showToast(`Booking payment confirmed for ${u.id} 💰`); setPayModal(null); };
   const markFullPay=u=>{ onUpdate(u.id,{paymentReceived:true,remainingAmount:0}); showToast(`Full payment received for ${u.id} 💰`); setPayModal(null); };
 
-  // WhatsApp message builder using template from master
   const buildWaMsg=(unit,customer,dispatch)=>{
     const tpl=invoiceTemplate||DEFAULT_TEMPLATE;
     const rem=unit.remainingAmount||0;
@@ -1683,12 +1664,12 @@ function Sales({ units, customers, dispatches, warehouses, onUpdate, onAddCustom
             <td><span className="uid">{u.id}</span></td>
             <td><span className="rtag">{u.rfidIn||"—"}</span><br/><span className="rtag">{u.rfidOut||"—"}</span></td>
             <td><WHLabel whId={u.warehouse} warehouses={warehouses}/></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
+            <td><b>{u.brand}</b><br/><span className="f9 mu">{u.tonnage}</span><br/>{u.starRating&&<span style={{fontSize:11,color:"var(--am)"}}>{starLabel(u.starRating)}</span>}</td>
             {tab==="available"&&<td style={{display:"none"}}/>}
             <td className="price">{fmt(u.salePrice)}</td>
             {tab==="sold"?<>
               <td><span className="invno">{u.invoiceNo||"—"}</span></td>
-              <td><b style={{fontSize:11.5}}>{u.soldTo}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.customerPhone}</span></td>
+              <td><b style={{fontSize:11.5}}>{u.soldTo}</b><br/><span className="f9 mu">{u.customerPhone}</span></td>
               <td><span style={{color:"var(--gr)",fontWeight:700}}>{fmt(u.bookingAmount||0)}</span>{!u.bookingCollected&&<div style={{fontSize:9,color:"var(--am)"}}>⏳ Pending</div>}{u.bookingCollected&&<div style={{fontSize:9,color:"var(--gr)"}}>✅ Collected</div>}</td>
               <td>{(u.remainingAmount||0)>0?<span style={{color:"var(--am)",fontWeight:700}}>{fmt(u.remainingAmount)}</span>:<span style={{color:"var(--gr)",fontSize:10.5}}>✅ Paid</span>}</td>
               <td><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1844,7 +1825,6 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
   const [showDone, setShowDone] = useState(false);
   const [bookModal, setBookModal] = useState(null); // unit to create new dispatch for
   const [df, setDf] = useState({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
-  // Sold units with no dispatch yet
   const noDispatch = units.filter(u=>u.status==="sold"&&!dispatches.find(d=>d.unitId===u.id));
   const doBook = () => {
     if(!bookModal) return;
@@ -1855,7 +1835,6 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
     setDf({deliveryPartner:"",trackingNo:"",notes:"",bookedDate:today()});
   };
   const enriched=dispatches.map(d=>({...d,unit:units.find(u=>u.id===d.unitId),customer:customers.find(c=>c.id===d.customerId)}));
-  // "done" = delivered AND payment received on the unit
   const isDone = d => (d.stage==="fitting"||d.stage==="paid") && units.find(u=>u.id===d.unitId)?.paymentReceived===true;
   const activeDispatches = enriched.filter(d=>!isDone(d));
   const doneDispatches   = enriched.filter(d=>isDone(d));
@@ -1889,7 +1868,7 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
           <td><span className="uid">{u.id}</span></td>
           <td><span className="invno">{u.invoiceNo||"—"}</span></td>
           <td><b>{u.brand}</b> {u.tonnage}{u.starRating&&<span style={{color:"var(--am)",fontSize:10}}> {starLabel(u.starRating)}</span>}</td>
-          <td style={{fontWeight:600}}>{u.soldTo||c?.name||"—"}</td>
+          <td className="f600">{u.soldTo||c?.name||"—"}</td>
           <td style={{fontSize:11}}>{u.customerPhone||c?.phone||"—"}</td>
           <td style={{fontSize:11}}>{u.soldDate||"—"}</td>
           <td><button className="btn bp bsm" onClick={()=>setBookModal(u)}>🚚 Book →</button></td>
@@ -1901,13 +1880,13 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
     {filtered.length===0?<div className="empty"><div className="ei">🚚</div><div className="et">No dispatches found</div></div>:filtered.map(d=>{
       const idx=si(d.stage); const next=DISPATCH_STAGES[idx+1];
       return <div key={d.id} className="dtcard">
-        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9,flexWrap:"wrap"}}>
+        <div className="row" style={{gap:9,marginBottom:9,flexWrap:"wrap"}}>
           <span className="uid">{d.unitId}</span><span className="invno">{d.invoiceNo||"—"}</span>
           <StageBadge stage={d.stage}/>
           <div style={{marginLeft:"auto",display:"flex",gap:6}}><button className="btn bb bsm" onClick={()=>setDet(d)}>Details</button>{next&&<button className="btn bp bsm" onClick={()=>setSm({d,next})}>{next.icon} {next.label} →</button>}</div>
         </div>
         <div style={{fontSize:11.5,color:"var(--mu2)",marginBottom:10}}>{d.unit?.brand} {d.unit?.tonnage} {d.unit?.starRating&&<span style={{color:"var(--am)"}}>{starLabel(d.unit.starRating)}</span>} · {d.customer?.name||"—"} · 📞 {d.customer?.phone||"—"}</div>
-        <div style={{display:"flex",alignItems:"center"}}>
+        <div className="row">
           {DISPATCH_STAGES.map((s,i)=><>
             <div key={s.id} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:56}}>
               <div style={{width:20,height:20,borderRadius:"50%",background:idx>=i?s.color:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,border:`2px solid ${idx>=i?s.color:"var(--b1)"}`,marginBottom:3,transition:"all .3s"}}>{idx>=i?s.icon:"·"}</div>
@@ -1955,7 +1934,6 @@ function Dispatch({ dispatches, units, customers, warehouses, onUpdateDispatch, 
   </div>;
 }
 
-
 // ─── INVOICE BOOK ────────────────────────────────────────────────────────────
 
 // ─── INVOICE BARCODE ─────────────────────────────────────────────────────────
@@ -1986,7 +1964,6 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
 
   const soldUnits = units.filter(u => u.status === "sold" && u.invoiceNo);
 
-  // Enrich with customer + dispatch
   const invoices = soldUnits.map(u => ({
     ...u,
     customer: customers.find(c => c.unitIds?.includes(u.id)),
@@ -1994,7 +1971,6 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
     wh: warehouses.find(w => w.id === u.warehouse),
   }));
 
-  // Filter
   const filtered = invoices.filter(inv => {
     const q = search.toLowerCase();
     const matchSearch = !search ||
@@ -2009,7 +1985,6 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
     return matchSearch && matchPay;
   });
 
-  // Sort
   const sorted = [...filtered].sort((a,b) => {
     if(sortBy==="date_desc") return (b.soldDate||"").localeCompare(a.soldDate||"");
     if(sortBy==="date_asc")  return (a.soldDate||"").localeCompare(b.soldDate||"");
@@ -2110,15 +2085,15 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
         <tbody>{sorted.map(inv=>{ const ds=dispStage(inv); const hasBalance=(inv.remainingAmount||0)>0; const cmpCount=complaints.filter(c=>c.invoiceNo===inv.invoiceNo).length;
           return <tr key={inv.id} style={{background:hasBalance?"rgba(251,191,36,.03)":""}}>
             <td>
-              <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <div className="row" style={{gap:5}}>
                 <span className="invno">{inv.invoiceNo}</span>
                 <button title="Register Complaint" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:2,color:cmpCount>0?"var(--rd)":"var(--mu2)"}} onClick={()=>setRegComplaint(inv)}>🔔{cmpCount>0&&<span style={{fontSize:9,marginLeft:2,color:"var(--rd)"}}>{cmpCount}</span>}</button>
               </div>
             </td>
-            <td style={{fontSize:10.5,color:"var(--mu2)"}}>{inv.soldDate||"—"}</td>
+            <td className="f11 mu2">{inv.soldDate||"—"}</td>
             <td style={{fontWeight:600,fontSize:12}}>{inv.soldTo||"—"}</td>
             <td style={{fontSize:11}}>{inv.customerPhone||"—"}</td>
-            <td><b style={{fontSize:11}}>{inv.brand} {inv.tonnage}</b>{inv.starRating&&<span style={{color:"var(--am)",fontSize:10}}> {starLabel(inv.starRating)}</span>}<br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{inv.id}</span></td>
+            <td><b style={{fontSize:11}}>{inv.brand} {inv.tonnage}</b>{inv.starRating&&<span style={{color:"var(--am)",fontSize:10}}> {starLabel(inv.starRating)}</span>}<br/><span className="f9 mu">{inv.id}</span></td>
             <td className="price">{fmt(inv.totalAmount||inv.salePrice)}</td>
             <td style={{color:hasBalance?"var(--am)":"var(--gr)",fontWeight:600}}>{hasBalance?fmt(inv.remainingAmount):"✅ Paid"}</td>
             <td>{inv.paymentReceived?<span style={{color:"var(--gr)",fontSize:10.5}}>✅ Paid</span>:<span style={{color:"var(--am)",fontSize:10.5}}>⏳ Pending</span>}</td>
@@ -2145,9 +2120,9 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
 
           {/* TOP ROW */}
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div className="row" style={{gap:10}}>
               <div style={{background:"rgba(129,140,248,.1)",border:"1px solid rgba(129,140,248,.2)",borderRadius:8,padding:"6px 10px",textAlign:"center",minWidth:80}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center"}}>
+                <div className="row" style={{gap:4,justifyContent:"center"}}>
                   <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--ac2)",fontWeight:700}}>{inv.invoiceNo}</span>
                   <button title="Register Complaint" style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:0,color:cmpCount>0?"var(--rd)":"var(--mu2)",lineHeight:1}} onClick={()=>setRegComplaint(inv)}>🔔{cmpCount>0&&<span style={{fontSize:8,color:"var(--rd)"}}>{cmpCount}</span>}</button>
                 </div>
@@ -2174,20 +2149,20 @@ function InvoiceBook({ units, customers, dispatches, warehouses, onUpdate, showT
 
           {/* PRODUCT ROW */}
           <div style={{display:"flex",gap:16,flexWrap:"wrap",padding:"10px 12px",background:"rgba(255,255,255,.02)",borderRadius:7,marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div className="row" style={{gap:6}}>
               <span style={{fontSize:18}}>❄️</span>
               <div>
                 <div style={{fontSize:12,fontWeight:700}}>{inv.brand} {inv.tonnage} {inv.starRating&&<span style={{color:"var(--am)",fontSize:11}}>{starLabel(inv.starRating)}</span>}</div>
-                <div style={{fontSize:10.5,color:"var(--mu2)"}}>{inv.model||"AC Unit"} · <span className="uid">{inv.id}</span></div>
+                <div className="f11 mu2">{inv.model||"AC Unit"} · <span className="uid">{inv.id}</span></div>
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,color:"var(--mu2)"}}>
+            <div className="row" style={{gap:4,fontSize:10.5,color:"var(--mu2)"}}>
               <span className="lot">{inv.lot||"—"}</span>
             </div>
-            {inv.wh&&<div style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,color:"var(--mu2)"}}>
+            {inv.wh&&<div className="row" style={{gap:4,fontSize:10.5,color:"var(--mu2)"}}>
               <span className="whlabel">🏭 {inv.wh.name}</span>
             </div>}
-            {inv.soldBy&&<div style={{fontSize:10.5,color:"var(--mu2)"}}>👤 {inv.soldBy}</div>}
+            {inv.soldBy&&<div className="f11 mu2">👤 {inv.soldBy}</div>}
           </div>
 
           {/* PAYMENT ROW */}
@@ -2351,8 +2326,8 @@ function Customers({ customers, units, dispatches }) {
       {filtered.length===0?<div className="empty"><div className="ei">👥</div><div className="et">No customers yet</div></div>:(
         <div className="tw"><table><thead><tr><th>Customer</th><th>Phone</th><th>City</th><th>Units</th><th>Value</th><th>Joined</th><th>Action</th></tr></thead>
           <tbody>{filtered.map(c=>{ const cu=(c.unitIds||[]).map(id=>units.find(u=>u.id===id)).filter(Boolean); const val=cu.reduce((s,u)=>s+(u.salePrice||0),0); return <tr key={c.id}>
-            <td><b style={{fontSize:12}}>{c.name}</b>{c.email&&<div style={{fontSize:9.5,color:"var(--mu)"}}>{c.email}</div>}</td>
-            <td style={{fontSize:11}}>{c.phone}{c.altPhone&&<div style={{fontSize:9.5,color:"var(--mu)"}}>{c.altPhone}</div>}</td>
+            <td><b style={{fontSize:12}}>{c.name}</b>{c.email&&<div className="f9 mu">{c.email}</div>}</td>
+            <td style={{fontSize:11}}>{c.phone}{c.altPhone&&<div className="f9 mu">{c.altPhone}</div>}</td>
             <td style={{fontSize:11}}>{c.city||"—"}{c.pincode&&<span style={{color:"var(--mu)"}}> {c.pincode}</span>}</td>
             <td style={{color:"var(--ac)",fontWeight:700}}>{cu.length}</td>
             <td className="price">{fmt(val)}</td>
@@ -2391,10 +2366,10 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
       {s.data.length===0?<div className="empty"><div className="et">No records yet</div></div>:(
         <div className="tw"><table><thead><tr><th>{s.label}</th>{extraCols.map(c=><th key={c}>{c}</th>)}<th>Created Date</th><th>Remark</th><th>Actions</th></tr></thead>
           <tbody>{s.data.map(item=><tr key={item.id}>
-            <td style={{fontWeight:600}}>{item[s.key]}</td>
-            {extraCols.map(c=><td key={c} style={{fontSize:11,color:"var(--mu2)"}}>{item[c]||"—"}</td>)}
+            <td className="f600">{item[s.key]}</td>
+            {extraCols.map(c=><td key={c} className="f11 mu2">{item[c]||"—"}</td>)}
             <td style={{fontSize:10.5}}>{item.createdDate}</td>
-            <td style={{fontSize:11,color:"var(--mu2)"}}>{item.remark||"—"}</td>
+            <td className="f11 mu2">{item.remark||"—"}</td>
             <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>openEdit(type,item)}>Edit</button><button className="btn br bsm" onClick={()=>del(type,item.id)}>Del</button></div></td>
           </tr>)}</tbody>
         </table></div>
@@ -2412,7 +2387,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
       <tbody>{STAR_RATINGS.map(s=><tr key={s.id}>
         <td style={{fontWeight:700,color:"var(--am)",fontSize:13}}>{starLabel(s.id)}</td>
         <td style={{fontFamily:"monospace",color:"var(--mu2)",fontSize:11}}>{s.id}</td>
-        <td style={{fontSize:11,color:"var(--mu2)"}}>{{
+        <td className="f11 mu2">{{
           "1star":"Basic / Economy model",
           "2star":"Standard efficiency",
           "3star":"Good efficiency · Popular choice",
@@ -2427,10 +2402,10 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
     {tab==="users"&&<div className="card"><div className="chd"><div><div className="ct">👤 Users ({users.length})</div></div><button className="btn bp" onClick={()=>{setUmod({item:null});setUform({name:"",username:"",password:"",role:"technician",modules:["dashboard"],createdDate:today()});}}>+ Add</button></div>
       <div className="tw"><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Modules</th><th>Actions</th></tr></thead>
         <tbody>{users.map(u=><tr key={u.id}>
-          <td><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,var(--ac),var(--ac2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,flexShrink:0}}>{u.name[0]}</div><span style={{fontWeight:600,fontSize:11.5}}>{u.name}</span></div></td>
+          <td><div className="row" style={{gap:7}}><div style={{width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,var(--ac),var(--ac2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:10,flexShrink:0}}>{u.name[0]}</div><span style={{fontWeight:600,fontSize:11.5}}>{u.name}</span></div></td>
           <td style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,color:"var(--ac)"}}>{u.username}</td>
           <td><span className="badge" style={{background:u.role==="admin"?"rgba(251,191,36,.12)":"rgba(56,189,248,.12)",color:u.role==="admin"?"var(--am)":"var(--ac)"}}>{u.role}</span></td>
-          <td style={{fontSize:10.5,color:"var(--mu2)"}}>{(u.modules||[]).length} modules</td>
+          <td className="f11 mu2">{(u.modules||[]).length} modules</td>
           <td><div style={{display:"flex",gap:5}}><button className="btn bb bsm" onClick={()=>{setUmod({item:u});setUform({...u});}}>Edit</button>{u.role!=="admin"&&<button className="btn br bsm" onClick={()=>{ onUsersChange(users.filter(x=>x.id!==u.id)); showToast("Deleted","warn"); }}>Del</button>}</div></td>
         </tr>)}</tbody>
       </table></div>
@@ -2496,7 +2471,7 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
           <div className="fi"><label className="fl">GST Line</label><input className="fn" value={invForm.gstLine||""} onChange={e=>setInvForm(p=>({...p,gstLine:e.target.value}))} placeholder="GST: YOUR-NUMBER"/></div>
           <div className="fi"><label className="fl">Invoice Footer</label><input className="fn" value={invForm.footer||""} onChange={e=>setInvForm(p=>({...p,footer:e.target.value}))} placeholder="Thank you message..."/></div>
           <div className="fi full" style={{flexDirection:"row",alignItems:"center",gap:12}}>
-            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
+            <label className="row" style={{gap:8,cursor:"pointer",fontSize:13}}>
               <input type="checkbox" checked={invForm.showGst!==false} onChange={e=>setInvForm(p=>({...p,showGst:e.target.checked}))} style={{accentColor:"var(--ac)",width:14,height:14}}/>
               Show GST 18% on invoice
             </label>
@@ -2541,8 +2516,6 @@ function MasterPage({ lots,brands,tonnages,warehouses,users,invoiceTemplate,onLo
   </div>;
 }
 
-
-
 // ─── REPORTS (Admin only) ────────────────────────────────────────────────────
 function Reports({ units, customers, dispatches, warehouses, lots, complaints=[] }) {
   const [rpt, setRpt] = useState("sales");
@@ -2571,7 +2544,6 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
     {id:"lot",      l:"📋 Lot-wise"},
   ];
 
-  // Export current report to Excel
   const exportReport = () => {
     const load = cb => { if(!window.XLSX){ const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; s.onload=cb; document.head.appendChild(s); } else cb(); };
     load(()=>{
@@ -2640,8 +2612,8 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
           <thead><tr><th>Date</th><th>Invoice</th><th>Unit</th><th>Brand/Ton/Stars</th><th>Customer</th><th>Total</th><th>Booking</th><th>Balance</th><th>Payment</th></tr></thead>
           <tbody>{soldUnits.sort((a,b)=>(b.soldDate||"").localeCompare(a.soldDate||"")).map(u=><tr key={u.id}>
             <td style={{fontSize:10.5}}>{u.soldDate}</td><td><span className="invno">{u.invoiceNo||"—"}</span></td>
-            <td><span className="uid">{u.id}</span></td><td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span></td>
-            <td style={{fontSize:11}}>{u.soldTo||"—"}<br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.customerPhone}</span></td>
+            <td><span className="uid">{u.id}</span></td><td><b>{u.brand}</b><br/><span className="f9 mu">{u.tonnage}</span></td>
+            <td style={{fontSize:11}}>{u.soldTo||"—"}<br/><span className="f9 mu">{u.customerPhone}</span></td>
             <td className="price">{fmt(u.totalAmount||u.salePrice)}</td>
             <td style={{color:"var(--gr)",fontWeight:600}}>{fmt(u.bookingAmount||0)}</td>
             <td style={{color:(u.remainingAmount||0)>0?"var(--am)":"var(--gr)",fontWeight:600}}>{fmt(u.remainingAmount||0)}</td>
@@ -2690,7 +2662,7 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
       {/* WAREHOUSE-WISE PENDING */}
       <div className="card"><div className="chd"><div><div className="ct">🏭 Pending by Warehouse</div></div></div>
         {warehouses.map(wh=>{ const wu=soldUnits.filter(u=>u.warehouse===wh.id&&(u.remainingAmount||0)>0); const wpend=wu.reduce((s,u)=>s+(u.remainingAmount||0),0); if(!wu.length)return null;
-          return <div key={wh.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
+          return <div key={wh.id} className="row" style={{justifyContent:"space-between",padding:"10px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
             <div style={{fontWeight:700,fontSize:13}}>🏭 {wh.name}</div>
             <div style={{display:"flex",gap:14,fontSize:11}}>
               <span style={{color:"var(--mu2)"}}>{wu.length} units pending</span>
@@ -2712,7 +2684,7 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
       {/* TONNAGE-WISE PENDING */}
       <div className="card"><div className="chd"><div><div className="ct">📐 Pending by Tonnage</div></div></div>
         {[...new Set(soldUnits.filter(u=>(u.remainingAmount||0)>0).map(u=>u.tonnage))].sort().map(ton=>{ const tu=soldUnits.filter(u=>u.tonnage===ton&&(u.remainingAmount||0)>0); const tpend=tu.reduce((s,u)=>s+(u.remainingAmount||0),0);
-          return <div key={ton} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
+          return <div key={ton} className="row" style={{justifyContent:"space-between",padding:"9px 12px",borderBottom:"1px solid var(--b1)",flexWrap:"wrap",gap:8}}>
             <span style={{fontWeight:700,fontSize:12}}>{ton}</span>
             <div style={{display:"flex",gap:14,fontSize:11}}>
               <span style={{color:"var(--mu2)"}}>{tu.length} units</span>
@@ -2730,8 +2702,8 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
           <tbody>{soldUnits.filter(u=>(u.remainingAmount||0)>0).sort((a,b)=>(b.remainingAmount||0)-(a.remainingAmount||0)).map(u=><tr key={u.id}>
             <td><span className="invno">{u.invoiceNo||"—"}</span></td>
             <td><span className="uid">{u.id}</span></td>
-            <td><b>{u.brand}</b><br/><span style={{fontSize:9.5,color:"var(--mu)"}}>{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
-            <td style={{fontWeight:600}}>{u.soldTo||"—"}</td>
+            <td><b>{u.brand}</b><br/><span className="f9 mu">{u.tonnage}</span>{u.starRating&&<><br/><span style={{fontSize:10,color:"var(--am)"}}>{starLabel(u.starRating)}</span></>}</td>
+            <td className="f600">{u.soldTo||"—"}</td>
             <td style={{fontSize:11}}>{u.customerPhone||"—"}</td>
             <td className="price">{fmt(u.totalAmount||u.salePrice)}</td>
             <td style={{color:"var(--gr)",fontWeight:600}}>{fmt(u.bookingAmount||0)}</td>
@@ -2749,7 +2721,7 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
         {soldUnits.length===0?<div className="empty"><div className="et">No sales in this period</div></div>:<div className="tw"><table>
           <thead><tr><th>Customer</th><th>Phone</th><th>Units</th><th>Brands</th><th>Total Value</th><th>Balance Due</th></tr></thead>
           <tbody>{Object.values(soldUnits.reduce((acc,u)=>{ const k=u.customerPhone||u.soldTo||"unknown"; if(!acc[k])acc[k]={name:u.soldTo,phone:u.customerPhone,units:[],total:0,balance:0}; acc[k].units.push(u); acc[k].total+=u.totalAmount||u.salePrice||0; acc[k].balance+=u.remainingAmount||0; return acc; },{})).map((c,i)=><tr key={i}>
-            <td style={{fontWeight:600}}>{c.name||"—"}</td><td style={{fontSize:11}}>{c.phone||"—"}</td>
+            <td className="f600">{c.name||"—"}</td><td style={{fontSize:11}}>{c.phone||"—"}</td>
             <td style={{color:"var(--ac)",fontWeight:700}}>{c.units.length}</td>
             <td style={{fontSize:11}}>{[...new Set(c.units.map(u=>u.brand))].join(", ")}</td>
             <td className="price">{fmt(c.total)}</td>
@@ -2776,7 +2748,7 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
         const accentCols   = ["var(--ac)","var(--ac2)","var(--gr)","var(--am)"];
         const ac = accentCols[i%accentCols.length];
         return <div key={wh.id} className="card" style={{marginBottom:14,borderTop:`3px solid ${ac}`}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+          <div className="row" style={{justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
             <div>
               <div style={{fontSize:15,fontWeight:800}}>🏭 {wh.name}</div>
               {wh.location&&<div style={{fontSize:11,color:"var(--mu2)",marginTop:2}}>📍 {wh.location}</div>}
@@ -2840,8 +2812,8 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
           <tbody>{techs.sort((a,b)=>(b.passed+b.repaired)-(a.passed+a.repaired)).map((t,i)=>{
             const total=t.passed+t.repaired; const rate=total>0?Math.round(t.passed/total*100):0;
             const rating=rate>=90?"⭐⭐⭐":rate>=70?"⭐⭐":"⭐";
-            return <tr key={i}><td style={{fontWeight:600}}>{t.name}</td><td style={{color:"var(--ac)",fontWeight:700}}>{total}</td><td style={{color:"var(--gr)",fontWeight:600}}>{t.passed}</td><td style={{color:"var(--rd)"}}>{t.repaired}</td>
-              <td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
+            return <tr key={i}><td className="f600">{t.name}</td><td style={{color:"var(--ac)",fontWeight:700}}>{total}</td><td style={{color:"var(--gr)",fontWeight:600}}>{t.passed}</td><td style={{color:"var(--rd)"}}>{t.repaired}</td>
+              <td><div className="row" style={{gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=60?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
               <td style={{fontSize:14}}>{rating}</td>
             </tr>;
           })}</tbody></table>;
@@ -2865,12 +2837,12 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
           <tbody>{techs.sort((a,b)=>b.total-a.total).map((t,i)=>{
             const rate=t.total>0?Math.round(t.resolved/t.total*100):0;
             return <tr key={i}>
-              <td style={{fontWeight:600}}>{t.name}</td>
+              <td className="f600">{t.name}</td>
               <td style={{color:"var(--ac)",fontWeight:700}}>{t.total}</td>
               <td style={{color:"var(--gr)",fontWeight:600}}>{t.resolved}</td>
               <td style={{color:"var(--ac2)"}}>{t.inProgress}</td>
               <td style={{color:"var(--rd)"}}>{t.open}</td>
-              <td><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
+              <td><div className="row" style={{gap:8}}><div style={{width:60,height:6,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${rate}%`,height:"100%",background:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:rate>=80?"var(--gr)":rate>=50?"var(--am)":"var(--rd)"}}>{rate}%</span></div></td>
             </tr>;
           })}</tbody></table>;
         })()}
@@ -2893,7 +2865,6 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
             const stockVal=lu.filter(u=>u.status==="available").reduce((s,u)=>s+(u.salePrice||0),0);
             const rev=lu.filter(u=>u.status==="sold").reduce((s,u)=>s+(u.totalAmount||u.salePrice||0),0);
             const sellThrough=lu.length>0?Math.round(sold/lu.length*100):0;
-            // Count complaints for units in this lot
             const lotInvoiceNos=lu.filter(u=>u.invoiceNo).map(u=>u.invoiceNo);
             const compCount=complaints.filter(c=>lotInvoiceNos.includes(c.invoiceNo)).length;
             const openComp=complaints.filter(c=>lotInvoiceNos.includes(c.invoiceNo)&&c.stage!=="resolved").length;
@@ -2917,7 +2888,7 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
               </td>
               <td className="price">{fmt(stockVal)}</td>
               <td style={{color:"var(--gr)",fontWeight:700}}>{fmt(rev)}</td>
-              <td><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:50,height:5,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${sellThrough}%`,height:"100%",background:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}>{sellThrough}%</span></div></td>
+              <td><div className="row" style={{gap:6}}><div style={{width:50,height:5,background:"rgba(255,255,255,.06)",borderRadius:20,overflow:"hidden"}}><div style={{width:`${sellThrough}%`,height:"100%",background:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}/></div><span style={{fontSize:11,fontWeight:700,color:sellThrough>=70?"var(--gr)":sellThrough>=40?"var(--am)":"var(--rd)"}}>{sellThrough}%</span></div></td>
             </tr>;
           })}</tbody>
         </table></div>
@@ -2925,7 +2896,6 @@ function Reports({ units, customers, dispatches, warehouses, lots, complaints=[]
     </div>}
   </div>;
 }
-
 
 // ─── COMPLAINTS MODULE ────────────────────────────────────────────────────────
 const COMPLAINT_TYPES = [
@@ -2953,21 +2923,17 @@ function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showT
   const [detModal, setDetModal]   = useState(null);     // complaint object
   const [updateModal, setUpdateModal] = useState(null); // complaint object
 
-  // New complaint form
   const blankForm = {invoiceNo:"",type:"",typeOther:"",description:""};
   const [form, setForm]   = useState(blankForm);
   const [resolvedInvoice, setResolvedInvoice] = useState(null); // unit found by invoice
 
-  // Update form
   const [upd, setUpd] = useState({stage:"",technicianName:"",techComment:"",resolvedDate:""});
 
-  // Lookup invoice
   const lookupInvoice = inv => {
     const u = units.find(u=>(u.invoiceNo||"").toUpperCase()===inv.toUpperCase());
     setResolvedInvoice(u||null);
   };
 
-  // Filter
   const open     = complaints.filter(c=>c.stage!=="resolved");
   const resolved = complaints.filter(c=>c.stage==="resolved");
   const list     = (tab==="open"?open:resolved).filter(c=>{
@@ -3020,12 +2986,11 @@ function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showT
       :list.map(c=>{
         const si=stageInfo(c.stage); const ti=typeLabel(c.type);
         const unit=units.find(u=>u.id===c.unitId);
-        // Count total complaints for this invoice
         const sameInv=complaints.filter(x=>x.invoiceNo===c.invoiceNo).length;
         return <div key={c.id} style={{background:"var(--s1)",border:`1.5px solid ${c.stage==="resolved"?"var(--b1)":"rgba(248,113,113,.2)"}`,borderRadius:10,padding:14,marginBottom:10}}>
           {/* TOP ROW */}
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div className="row" style={{gap:10}}>
               <div style={{background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.25)",borderRadius:8,padding:"6px 11px",textAlign:"center",minWidth:80}}>
                 <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#F87171",fontWeight:700}}>{c.invoiceNo}</div>
                 <div style={{fontSize:9,color:"var(--mu)",marginTop:2}}>{c.registeredDate}</div>
@@ -3060,7 +3025,7 @@ function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showT
           {c.stage==="resolved"&&c.resolvedDate&&<div style={{fontSize:10.5,color:"var(--gr)",marginTop:6}}>✅ Resolved on {c.resolvedDate}{c.technicianName?" by "+c.technicianName:""}</div>}
 
           {/* STAGE PROGRESS */}
-          <div style={{display:"flex",alignItems:"center",marginTop:10}}>
+          <div className="row" style={{marginTop:10}}>
             {COMPLAINT_STAGES.map((s,i)=><>
               <div key={s.id} style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:60}}>
                 <div style={{width:18,height:18,borderRadius:"50%",background:COMPLAINT_STAGES.findIndex(x=>x.id===c.stage)>=i?s.color:"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,marginBottom:2,transition:"all .3s"}}>{COMPLAINT_STAGES.findIndex(x=>x.id===c.stage)>=i?s.icon:"·"}</div>
@@ -3195,7 +3160,6 @@ function Complaints({ complaints, units, customers, onAdd, onUpdate, user, showT
 }
 
 // ─── BARCODE SCANNER (Camera) ─────────────────────────────────────────────────
-// Uses jsQR loaded from CDN for QR/barcode scanning via phone camera
 function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
   const videoRef = useRef();
   const canvasRef = useRef();
@@ -3208,13 +3172,11 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
   useEffect(() => {
     let jsQR = null;
 
-    // Load ZXing (handles BOTH QR codes AND 1D barcodes: Code128, Code39, EAN, etc.)
     let reader = null;
     const script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js";
     script.onload = () => { startCamera(); };
     script.onerror = () => {
-      // Fallback to jsQR if ZXing fails
       const s2 = document.createElement("script");
       s2.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
       s2.onload = () => { jsQR = window.jsQR; startCameraJsQR(); };
@@ -3225,14 +3187,11 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
 
     async function startCamera() {
       try {
-        // ZXing browser continuous scan — handles QR + all 1D barcodes
         const hints = new Map();
-        // Try all formats including linear barcodes
         if (window.ZXingBrowser) {
           const codeReader = new window.ZXingBrowser.BrowserMultiFormatReader();
           reader = codeReader;
           const devices = await window.ZXingBrowser.BrowserMultiFormatReader.listVideoInputDevices();
-          // Prefer back camera
           const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length-1];
           const deviceId = backCam?.deviceId;
           setScanning(true);
@@ -3242,7 +3201,6 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
               setLastScan(prev => {
                 if (prev === code) return prev;
                 onScan(code);
-                // Flash effect on video border
                 if (videoRef.current) {
                   videoRef.current.style.outline = "3px solid #34D399";
                   setTimeout(() => { if(videoRef.current) videoRef.current.style.outline = "none"; }, 500);
@@ -3259,7 +3217,6 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
       }
     }
 
-    // Fallback: jsQR for QR codes only
     async function startCameraJsQR() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -3298,9 +3255,7 @@ function CameraScanner({ onScan, onClose, title="Scan RFID / Barcode" }) {
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      // Stop ZXing reader if active
       try { if (reader && reader.reset) reader.reset(); } catch(e){}
-      // Stop raw stream if fallback was used
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       if (document.head.contains(script)) document.head.removeChild(script);
     };
@@ -3375,7 +3330,6 @@ export default function App() {
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [loading,    setLoading]    = useState(true);
   const [dbError,    setDbError]    = useState("");
-  // Camera scanner state - shared globally
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState("search"); // "search" | "verify"
   const cameraCallbackRef = useRef(null);
@@ -3506,7 +3460,6 @@ export default function App() {
   };
 
   const bulkAddUnits = async rows => {
-    // Insert all rows one by one to Supabase
     let maxNum = units.reduce((mx,x)=>Math.max(mx,parseInt((x.id||"").replace("AC-",""))||0),0);
     let successCount = 0;
     for (const row of rows) {
@@ -3562,7 +3515,6 @@ export default function App() {
     showToast(r.discrepancies>0?`${r.discrepancies} discrepancy ⚠️`:"Verification clear ✅",r.discrepancies>0?"warn":"success");
   };
 
-  // Master upsert helpers
   const upsertMaster = async (table, rows, mapper) => {
     const {error} = await supabase.from(table).upsert(rows.map(mapper));
     if(error) showToast("Save error: "+error.message,"error");
@@ -3584,10 +3536,8 @@ export default function App() {
   const handleCameraScan = (code) => {
     if(cameraCallbackRef.current) cameraCallbackRef.current(code);
     if(cameraMode==="search") setCameraOpen(false); // close after one scan in search mode
-    // in verify mode, stay open for continuous scanning
   };
 
-  // Keep logged-in user fresh
   useEffect(()=>{ if(user){ const f=users.find(u=>u.id===user.id); if(f){ setUser(prev=>{ const updated={...prev,...f}; try{localStorage.setItem("cs_user",JSON.stringify(updated));}catch{} return updated; }); } } },[users]);
   const userMods=user?.modules||[];
   useEffect(()=>{ if(user&&!userMods.includes(page))setPage(userMods[0]||"dashboard"); },[userMods]);
